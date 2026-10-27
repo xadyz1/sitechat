@@ -74,6 +74,9 @@ async def _portal_context(request: Request, identifier: str) -> tuple:
     site_id = site.get("site_id", identifier)
     site_name = site.get("name") or site.get("domain") or "Help"
     portal_name = hc.get("portal_name") or site_name
+    # Inherit site branding when the help-center fields were never customised
+    appearance = (site.get("config") or {}).get("appearance") or {}
+    site_url = site.get("url") or site.get("domain") or ""
 
     # Locale: explicit ?locale= > remembered cookie > configured default
     locales = [l.lower() for l in (hc.get("locales") or ["en"])]
@@ -102,13 +105,13 @@ async def _portal_context(request: Request, identifier: str) -> tuple:
 
     return db, {
         "site_id": site_id,
-        "site_url": site.get("url") or site.get("domain") or "",
+        "site_url": site_url,
         "portal_name": portal_name,
         "portal_title": hc.get("portal_title") or f"{portal_name} | Help Center",
         "header_text": hc.get("header_text") or "Support Portal",
-        "home_page_link": hc.get("home_page_link"),
-        "brand_color": hc.get("brand_color") or "#7B3DFB",
-        "logo_url": hc.get("logo_url"),
+        "home_page_link": hc.get("home_page_link") or (f"https://{site_url}" if site_url and not site_url.startswith("http") else site_url) or None,
+        "brand_color": hc.get("brand_color") or appearance.get("primary_color") or "#7B3DFB",
+        "logo_url": hc.get("logo_url") or site.get("favicon_url") or appearance.get("bot_avatar_url"),
         "layout": hc.get("layout") or "documentation",
         "social_links": hc.get("social_links") or [],
         "embed_widget": hc.get("embed_widget", True),

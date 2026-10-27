@@ -6226,10 +6226,12 @@ function getHelpCenterTabContent() {
     const portalName = hc.portal_name || siteName;
     const headerText = hc.header_text || 'Support Portal';
     const portalTitle = hc.portal_title || (siteName ? `${siteName} | Help Center` : 'Help Center');
-    const homePageLink = hc.home_page_link || '';
+    // First-time defaults inherit the site's existing branding
+    const appearance = config.appearance || {};
+    const homePageLink = hc.home_page_link || (currentDetailSite ? (currentDetailSite.url || '') : '');
     const slug = hc.slug || '';
-    const brandColor = hc.brand_color || '#7B3DFB';
-    const logoUrl = hc.logo_url || '';
+    const brandColor = hc.brand_color || appearance.primary_color || '#7B3DFB';
+    const logoUrl = hc.logo_url || (currentDetailSite ? (currentDetailSite.favicon_url || '') : '') || appearance.bot_avatar_url || '';
     const layout = hc.layout || 'documentation';
     const socialLinks = Array.isArray(hc.social_links) ? hc.social_links : [];
     const embedWidget = hc.embed_widget !== false;
