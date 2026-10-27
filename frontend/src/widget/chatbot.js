@@ -1984,22 +1984,34 @@
       return;
     }
     const typingRow = showTypingIndicator();
-    try {
-      const L = await fetch(config.apiUrl + "/api/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON["stringify"]({
-          message: H,
-          session_id: sessionId,
-          site_id: config.siteId
-        })
-      }), M = await L["json"]();
-      typingRow["remove"](), appendMessage(M["answer"] || M["response"] || "No response", "bot", M["sources"], M["products"]), M["suggest_handoff"] && showHandoffSuggestion(M["handoff_reason"]), appendPostReplyPrompts();
-    } catch (N) {
-      typingRow["remove"](), appendMessage("Sorry, something went wrong. Please try again.", "bot");
+    let lastErr = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const L = await fetch(config.apiUrl + "/api/chat", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON["stringify"]({
+            message: H,
+            session_id: sessionId,
+            site_id: config.siteId
+          })
+        });
+        if (!L.ok) throw new Error("chat HTTP " + L.status);
+        const M = await L["json"]();
+        typingRow["remove"]();
+        appendMessage(M["answer"] || M["response"] || "No response", "bot", M["sources"], M["products"]);
+        M["suggest_handoff"] && showHandoffSuggestion(M["handoff_reason"]);
+        appendPostReplyPrompts();
+        return;
+      } catch (N) {
+        lastErr = N;
+        if (attempt === 0) await sleepMs(1200);
+      }
     }
+    console["error"]("SwiftChat message failed:", lastErr);
+    typingRow["remove"](), appendMessage("Sorry, something went wrong. Please try again.", "bot");
   });
   function appendPostReplyPrompts() {
     if (!config.quickPrompts.enabled || !config.quickPrompts.showAfterResponse) return;
