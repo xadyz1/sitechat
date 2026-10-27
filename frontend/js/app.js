@@ -1278,7 +1278,7 @@ let currentDetailSite = null;
 
 const VALID_DETAIL_TABS = [
     'appearance', 'embed', 'visibility', 'behavior', 'quick-prompts', 'triggers', 'training',
-    'help-center', 'handoff', 'leads', 'notifications', 'security', 'crawling'
+    'help-center', 'handoff', 'leads', 'notifications', 'security', 'crawling', 'content'
 ];
 
 const DETAIL_TAB_LABELS = {
@@ -1294,7 +1294,8 @@ const DETAIL_TAB_LABELS = {
     leads: 'Leads',
     notifications: 'Notifications',
     security: 'Security',
-    crawling: 'Crawling'
+    crawling: 'Crawling',
+    content: 'Content'
 };
 
 const SIDEBAR_COLLAPSED_KEY = 'sitechat-sidebar-collapsed';
@@ -1628,6 +1629,9 @@ function loadDetailTabContent(tabId) {
         case 'notifications':
             content = getNotificationsTabContent();
             break;
+        case 'content':
+            content = getContentTabContent();
+            break;
         default:
             content = '<p>Tab content not available</p>';
     }
@@ -1681,6 +1685,10 @@ function initTabHandlers(tabId) {
         case 'notifications':
             initNotificationsHandlers();
             loadNotificationsConfig();
+            break;
+        case 'content':
+            initContentHandlers();
+            loadContentState();
             break;
     }
 }
@@ -11716,4 +11724,240 @@ async function importBackup() {
         st.textContent = `Imported ${data.sites} site(s), ${data.related} related records, ${data.users_created} new user(s); ${data.recrawl_queued} re-crawl(s) queued.`;
         if (typeof loadSites === 'function') loadSites();
     } catch (e) { st.textContent = e.message; }
+}
+
+// ==================== AI Content (scheduled posts + approval) ====================
+
+let contentState = { settings: {}, posts: [] };
+
+const CONTENT_STATUS_LABELS = {
+    scheduled: 'Scheduled',
+    drafting: 'Drafting…',
+    pending_review: 'In review',
+    publishing: 'Publishing…',
+    published: 'Published',
+    rejected: 'Rejected',
+    failed: 'Failed'
+};
+
+function getContentTabContent() {
+    return `
+        <div class="tab-form">
+            <div class="config-section" id="content-settings-section">
+                <h4 class="config-section-title-text">AI Content Pipeline</h4>
+                <p class="form-help">Schedule posts for the agent to draft. Nothing publishes without your approval.</p>
+
+                <div class="form-group">
+                    <label class="toggle-label">
+                        <input type="checkbox" id="content-enabled">
+                        <span class="toggle-switch"></span>
+                        Enable content pipeline
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label for="content-author">Author name</label>
+                    <input type="text" id="content-author" class="form-input" placeholder="Enigma">
+                </div>
+                <div class="form-group">
+                    <label for="content-voice">Standing instructions (brand voice, language, rules)</label>
+                    <textarea id="content-voice" class="form-input" rows="4" placeholder="Write in pt-PT, tasteful adult-lifestyle magazine tone…"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="content-publish-url">Publish API endpoint</label>
+                    <input type="url" id="content-publish-url" class="form-input" placeholder="https://secretpleasures.example/api/posts">
+                    <span class="form-hint">Approved posts are POSTed here as JSON (<code>title, slug, summary, html, meta_description, tags, author</code>).</span>
+                </div>
+                <div class="form-group">
+                    <label for="content-publish-secret">Endpoint secret (Bearer)</label>
+                    <input type="password" id="content-publish-secret" class="form-input" placeholder="Leave blank to keep current" autocomplete="new-password">
+                </div>
+                <button type="button" class="btn btn-primary btn-sm" id="content-save-settings">Save settings</button>
+                <span id="content-settings-status" class="form-hint"></span>
+            </div>
+
+            <div class="form-divider"></div>
+
+            <div class="config-section">
+                <h4 class="config-section-title-text">Queue a post</h4>
+                <div class="form-group">
+                    <label for="content-new-brief">Topic / brief</label>
+                    <textarea id="content-new-brief" class="form-input" rows="3" placeholder="e.g. A guide to choosing CBD strength for beginners"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="content-new-instructions">Extra instructions (optional)</label>
+                    <input type="text" id="content-new-instructions" class="form-input" placeholder="Mention the winter collection, ~800 words">
+                </div>
+                <div class="form-group">
+                    <label for="content-new-schedule">Schedule (leave empty to draft now)</label>
+                    <input type="datetime-local" id="content-new-schedule" class="form-input">
+                </div>
+                <button type="button" class="btn btn-primary btn-sm" id="content-queue-post">Queue post</button>
+                <span id="content-queue-status" class="form-hint"></span>
+            </div>
+
+            <div class="form-divider"></div>
+
+            <div class="config-section">
+                <h4 class="config-section-title-text">Posts</h4>
+                <div id="content-posts-list"><p class="form-help">Loading…</p></div>
+            </div>
+        </div>
+    `;
+}
+
+function initContentHandlers() {
+    document.getElementById('content-save-settings')?.addEventListener('click', saveContentSettings);
+    document.getElementById('content-queue-post')?.addEventListener('click', queueContentPost);
+}
+
+async function loadContentState() {
+    if (!currentDetailSite) return;
+    try {
+        const res = await fetch(`${API_BASE}/sites/${currentDetailSite.site_id}/content`, { headers: getAuthHeaders() });
+        if (!res.ok) throw new Error('Failed to load');
+        contentState = await res.json();
+    } catch (e) {
+        contentState = { settings: {}, posts: [] };
+    }
+    populateContentSettings();
+    renderContentPosts();
+}
+
+function populateContentSettings() {
+    const s = contentState.settings || {};
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+    const en = document.getElementById('content-enabled');
+    if (en) en.checked = s.enabled === true;
+    set('content-author', s.author_name || 'Enigma');
+    set('content-voice', s.voice_instructions);
+    set('content-publish-url', s.publish_url);
+    const secretEl = document.getElementById('content-publish-secret');
+    if (secretEl) secretEl.placeholder = s.has_secret ? '•••••••• (configured — leave blank to keep)' : 'Bearer secret';
+}
+
+async function saveContentSettings() {
+    if (!currentDetailSite) return;
+    const st = document.getElementById('content-settings-status');
+    st.textContent = 'Saving…';
+    try {
+        const res = await fetch(`${API_BASE}/sites/${currentDetailSite.site_id}/content/settings`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({
+                enabled: document.getElementById('content-enabled')?.checked === true,
+                author_name: document.getElementById('content-author')?.value.trim() || 'AI Writer',
+                voice_instructions: document.getElementById('content-voice')?.value.trim() || null,
+                publish_url: document.getElementById('content-publish-url')?.value.trim() || null,
+                publish_secret: document.getElementById('content-publish-secret')?.value.trim() || null
+            })
+        });
+        if (!res.ok) throw new Error('Save failed');
+        st.textContent = 'Saved';
+        setTimeout(() => { st.textContent = ''; }, 2000);
+        loadContentState();
+    } catch (e) {
+        st.textContent = e.message;
+    }
+}
+
+async function queueContentPost() {
+    if (!currentDetailSite) return;
+    const brief = document.getElementById('content-new-brief')?.value.trim();
+    const st = document.getElementById('content-queue-status');
+    if (!brief) { st.textContent = 'Enter a brief first.'; return; }
+    const schedVal = document.getElementById('content-new-schedule')?.value;
+    st.textContent = 'Queuing…';
+    try {
+        const res = await fetch(`${API_BASE}/sites/${currentDetailSite.site_id}/content/posts`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({
+                brief,
+                instructions: document.getElementById('content-new-instructions')?.value.trim() || null,
+                scheduled_at: schedVal ? new Date(schedVal).toISOString() : null
+            })
+        });
+        if (!res.ok) throw new Error((await res.json()).detail || 'Failed');
+        document.getElementById('content-new-brief').value = '';
+        document.getElementById('content-new-instructions').value = '';
+        document.getElementById('content-new-schedule').value = '';
+        st.textContent = '';
+        loadContentState();
+    } catch (e) {
+        st.textContent = e.message;
+    }
+}
+
+function contentPostActions(post) {
+    const id = post.post_id;
+    const btn = (action, label, cls = 'btn-secondary') =>
+        `<button type="button" class="btn ${cls} btn-sm" onclick="contentPostAction('${id}','${action}')">${label}</button>`;
+    switch (post.status) {
+        case 'scheduled':
+            return btn('generate', 'Draft now') + btn('delete', 'Delete', 'btn-danger');
+        case 'pending_review':
+            return btn('approve', 'Approve & publish', 'btn-primary')
+                 + btn('generate', 'Regenerate')
+                 + btn('reject', 'Reject')
+                 + btn('delete', 'Delete', 'btn-danger');
+        case 'failed':
+            return btn('generate', 'Retry') + btn('delete', 'Delete', 'btn-danger');
+        case 'rejected':
+            return btn('delete', 'Delete', 'btn-danger');
+        default:
+            return '';
+    }
+}
+
+function renderContentPosts() {
+    const el = document.getElementById('content-posts-list');
+    if (!el) return;
+    const posts = contentState.posts || [];
+    if (!posts.length) {
+        el.innerHTML = '<p class="form-help">No posts queued yet.</p>';
+        return;
+    }
+    el.innerHTML = posts.map(post => {
+        const when = post.scheduled_at ? new Date(post.scheduled_at + 'Z').toLocaleString() : 'asap';
+        const review = post.status === 'pending_review' && post.draft_html ? `
+            <div class="content-draft">
+                <div class="content-draft-meta">
+                    <strong>${escapeHtml(post.title || 'Untitled')}</strong>
+                    ${post.summary ? `<p>${escapeHtml(post.summary)}</p>` : ''}
+                    ${(post.tags || []).length ? `<p>Tags: ${post.tags.map(escapeHtml).join(', ')}</p>` : ''}
+                </div>
+                <iframe class="content-draft-frame" sandbox="" srcdoc="${escapeHtml('<style>body{font-family:sans-serif;padding:12px;line-height:1.5}</style>' + post.draft_html)}"></iframe>
+            </div>` : '';
+        const err = post.error ? `<p class="content-post-error">${escapeHtml(post.error)}</p>` : '';
+        return `
+            <div class="content-post">
+                <div class="content-post-head">
+                    <span class="status-badge content-status-${post.status}">${CONTENT_STATUS_LABELS[post.status] || post.status}</span>
+                    <span class="content-post-brief">${escapeHtml(post.title || post.brief)}</span>
+                    <span class="content-post-when">${when}</span>
+                </div>
+                ${err}
+                ${review}
+                <div class="content-post-actions">${contentPostActions(post)}</div>
+            </div>`;
+    }).join('');
+}
+
+async function contentPostAction(postId, action) {
+    if (!currentDetailSite) return;
+    if (action === 'delete' && !confirm('Delete this post?')) return;
+    if (action === 'reject' && !confirm('Reject this draft?')) return;
+    const method = action === 'delete' ? 'DELETE' : 'POST';
+    const path = action === 'delete'
+        ? `${API_BASE}/sites/${currentDetailSite.site_id}/content/posts/${postId}`
+        : `${API_BASE}/sites/${currentDetailSite.site_id}/content/posts/${postId}/${action}`;
+    try {
+        const res = await fetch(path, { method, headers: getAuthHeaders() });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || 'Action failed');
+        if (action === 'approve') alert('Published.');
+    } catch (e) {
+        alert(e.message);
+    }
+    loadContentState();
 }

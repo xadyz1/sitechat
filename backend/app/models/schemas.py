@@ -400,6 +400,59 @@ class SiteHandoffPublicConfig(BaseModel):
     has_agents: bool = Field(default=False, description="Whether any human agents are assigned to the site")
 
 
+class SiteContentConfig(BaseModel):
+    """AI content pipeline — scheduled drafts, manual approval, API publish."""
+    enabled: bool = Field(default=False, description="Enable scheduled content generation")
+    publish_url: Optional[str] = Field(
+        default=None,
+        description="Endpoint that receives approved posts (POST JSON, Bearer auth)"
+    )
+    publish_secret: Optional[str] = Field(
+        default=None,
+        description="Bearer token sent to publish_url — never exposed publicly"
+    )
+    author_name: str = Field(default="AI Writer", description="Byline sent with published posts")
+    voice_instructions: Optional[str] = Field(
+        default=None,
+        description="Standing brief: brand voice, language, audience, rules for every post"
+    )
+
+
+class ContentPostCreate(BaseModel):
+    """Queue a post for scheduled drafting."""
+    brief: str = Field(..., min_length=3, max_length=4000, description="Topic/brief for the post")
+    instructions: Optional[str] = Field(None, max_length=2000, description="Extra instructions for this post only")
+    scheduled_at: Optional[datetime] = Field(None, description="When to draft it (UTC); null/blank = draft immediately")
+
+
+class ContentPostUpdate(BaseModel):
+    """Edit a queued post or its draft."""
+    brief: Optional[str] = Field(None, min_length=3, max_length=4000)
+    instructions: Optional[str] = Field(None, max_length=2000)
+    scheduled_at: Optional[datetime] = None
+    title: Optional[str] = Field(None, max_length=300)
+    draft_html: Optional[str] = Field(None, max_length=200000)
+
+
+class ContentPost(BaseModel):
+    """A scheduled/generated post for a site."""
+    post_id: str
+    site_id: str
+    brief: str
+    instructions: Optional[str] = None
+    scheduled_at: Optional[datetime] = None
+    status: str = "scheduled"  # scheduled|drafting|pending_review|publishing|published|rejected|failed
+    title: Optional[str] = None
+    summary: Optional[str] = None
+    draft_html: Optional[str] = None
+    meta_description: Optional[str] = None
+    tags: List[str] = Field(default_factory=list)
+    error: Optional[str] = None
+    published_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
 class SiteConfig(BaseModel):
     """Complete site configuration."""
     appearance: SiteAppearanceConfig = Field(default_factory=SiteAppearanceConfig)

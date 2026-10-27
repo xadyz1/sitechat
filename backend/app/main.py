@@ -50,6 +50,7 @@ from app.routes.branding import router as branding_router
 from app.routes.preview import router as preview_router
 from app.routes.demo_hc import router as demo_hc_router
 from app.routes.backup import router as backup_router
+from app.routes.content import router as content_router
 from app.services.auth import AuthService
 from app.services.scheduler import get_scheduler
 
@@ -139,6 +140,24 @@ async def lifespan(app: FastAPI):
         scheduler.set_dependencies(mongodb, _execute_crawl_job)
         await scheduler.start()
         logger.info("Crawl scheduler started")
+
+        # Content pipeline: scan every minute for posts due for drafting.
+        # The scan itself is the schedule, so nothing needs re-registering
+        # after restarts — a due post simply gets picked up on the next tick.
+        from app.services.content import process_due_posts
+        from apscheduler.triggers.interval import IntervalTrigger
+
+        async def _content_tick():
+            try:
+                await process_due_posts(mongodb)
+            except Exception as e:
+                logger.error(f"Content tick failed: {e}")
+
+        scheduler.scheduler.add_job(
+            _content_tick, trigger=IntervalTrigger(minutes=1),
+            id="content_due_scan", replace_existing=True,
+        )
+        logger.info("Content scheduler started")
         
         logger.info(f"{settings.APP_NAME} started successfully!")
         
@@ -232,6 +251,7 @@ app.include_router(branding_router)
 app.include_router(preview_router)
 app.include_router(demo_hc_router)
 app.include_router(backup_router)
+app.include_router(content_router)
 
 # Serve static files (frontend)
 # Get the absolute path to the frontend directory

@@ -12002,3 +12002,21 @@ body.is-master .is-master-only { display: flex !important; }
 .backup-actions { display: flex; gap: 28px; flex-wrap: wrap; }
 .backup-col { flex: 1 1 260px; min-width: 0; }
 .backup-col input[type=file] { display: block; font-size: 13px; max-width: 100%; }
+
+/* AI Content tab */
+.content-post { border: 1px solid var(--border-color, #e5e7eb); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
+.content-post-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.content-post-brief { flex: 1; min-width: 160px; font-size: 14px; }
+.content-post-when { font-size: 12px; color: #6b7280; }
+.content-post-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.content-post-error { color: #b91c1c; font-size: 12px; margin: 8px 0 0; }
+.content-draft { margin-top: 10px; }
+.content-draft-meta { font-size: 13px; margin-bottom: 8px; }
+.content-draft-meta p { margin: 2px 0; color: #6b7280; }
+.content-draft-frame { width: 100%; height: 320px; border: 1px solid var(--border-color, #e5e7eb); border-radius: 8px; background: #fff; }
+.content-status-scheduled { background: #eff6ff; color: #1d4ed8; }
+.content-status-pending_review { background: #fef3c7; color: #92400e; }
+.content-status-published { background: #dcfce7; color: #166534; }
+.content-status-failed { background: #fee2e2; color: #b91c1c; }
+.content-status-rejected { background: #f3f4f6; color: #6b7280; }
+.content-status-drafting, .content-status-publishing { background: #ede9fe; color: #6d28d9; }
