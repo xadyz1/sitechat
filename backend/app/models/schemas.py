@@ -177,6 +177,7 @@ class SiteAppearanceConfig(BaseModel):
         default=None,
         description="Launcher icon: built-in name (chat, headset, help, bell, star, bolt, robot, smile) or image URL/data URL"
     )
+    launcher_badge: bool = Field(default=False, description="Show a red unread-message count badge on the closed launcher")
 
     # Placement & offsets (position also accepts: bottom-left, bottom-center, bottom-right)
     offset_x: int = Field(default=24, ge=0, le=200, description="Horizontal offset of the launcher/window in px")

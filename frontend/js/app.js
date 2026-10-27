@@ -1942,6 +1942,13 @@ function getAppearanceTabContent() {
                             </div>
                             <div class="launcher-icon-library" id="launcher-icon-library" style="display:none"></div>
                         </div>
+                        <div class="form-group">
+                            <label class="toggle-label">
+                                <input type="checkbox" id="config-launcher-badge" ${a.launcher_badge ? 'checked' : ''}>
+                                <span>Unread badge</span>
+                            </label>
+                            <small class="form-hint">Red notification count on the closed launcher when a greeting, nudge or message is waiting.</small>
+                        </div>
                         <div class="form-row">
                             <div class="form-group">
                                 <label for="config-position">Position</label>
@@ -4748,6 +4755,7 @@ function getConfigFromForm() {
             launcher_style: launcherStyle,
             launcher_text: val('config-launcher-text')?.trim() || null,
             launcher_icon: val('config-launcher-icon')?.trim() || null,
+            launcher_badge: checked('config-launcher-badge') || false,
             offset_x: Math.min(200, Math.max(0, parseInt(val('config-offset-x')) || 0)),
             offset_y: Math.min(200, Math.max(0, parseInt(val('config-offset-y')) || 0)),
             movable_window: checked('config-movable-window') || false,
