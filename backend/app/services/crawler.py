@@ -191,11 +191,19 @@ class CrawlerService:
                 self.thin_pages += 1
             return None
 
+        try:
+            from app.services.products import extract_products
+            products = extract_products(url, html)
+        except Exception as e:
+            logger.debug(f"Product extraction failed for {url}: {e}")
+            products = []
+
         return {
             "url": url,
             "title": title.strip(),
             "content": text,
             "html": html,
+            "products": products,
             "metadata": {
                 "content_length": len(text),
                 "word_count": len(text.split())

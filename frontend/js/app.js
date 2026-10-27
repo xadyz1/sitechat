@@ -2179,6 +2179,10 @@ function getBehaviorTabContent() {
                 <input type="checkbox" id="config-show-sources" ${behavior.show_sources !== false ? 'checked' : ''}>
                 <label for="config-show-sources">Show source citations</label>
             </div>
+            <div class="form-group form-checkbox">
+                <input type="checkbox" id="config-product-cards" ${behavior.product_cards !== false ? 'checked' : ''}>
+                <label for="config-product-cards">Show product cards for shop items mentioned in replies</label>
+            </div>
             
             <div class="form-actions">
                 <button type="button" class="btn btn-primary btn-sm" id="save-config">Save Changes</button>
@@ -4625,6 +4629,8 @@ function populateConfigForm(config) {
     if (maxTokensInput) maxTokensInput.value = behavior.max_tokens || 500;
     const showSourcesCheckbox = document.getElementById('config-show-sources');
     if (showSourcesCheckbox) showSourcesCheckbox.checked = behavior.show_sources !== false;
+    const productCardsCheckbox = document.getElementById('config-product-cards');
+    if (productCardsCheckbox) productCardsCheckbox.checked = behavior.product_cards !== false;
 }
 
 function getConfigFromForm() {
@@ -4690,7 +4696,8 @@ function getConfigFromForm() {
             system_prompt: val('config-prompt') || '',
             temperature: parseFloat(val('config-temperature')) || 0.7,
             max_tokens: parseInt(val('config-max-tokens')) || 500,
-            show_sources: checked('config-show-sources') ?? true
+            show_sources: checked('config-show-sources') ?? true,
+            product_cards: checked('config-product-cards') ?? true
         }
     };
 }

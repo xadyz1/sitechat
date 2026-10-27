@@ -36,6 +36,7 @@ class ChatResponse(BaseModel):
     tokens_used: Optional[int] = Field(None, description="Number of tokens used")
     suggest_handoff: bool = Field(default=False, description="Whether to suggest human handoff")
     handoff_reason: Optional[str] = Field(None, description="Reason for suggesting handoff")
+    products: List[Dict[str, Any]] = Field(default_factory=list, description="Shop products mentioned in the answer")
 
 
 # ==================== Crawl Models ====================
@@ -250,6 +251,7 @@ class SiteBehaviorConfig(BaseModel):
     temperature: float = Field(default=0.7, ge=0.0, le=2.0, description="AI temperature (0-2)")
     max_tokens: int = Field(default=500, ge=50, le=4000, description="Maximum tokens in response")
     show_sources: bool = Field(default=True, description="Show source citations")
+    product_cards: bool = Field(default=True, description="Render product cards for shop items mentioned in replies")
 
 
 class SiteLeadCaptureConfig(BaseModel):

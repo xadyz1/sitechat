@@ -64,6 +64,9 @@ class IndexerService:
                     metadata=page.get("metadata", {})
                 )
                 
+                if page.get("products"):
+                    await self._save_products(mongodb, page)
+
                 total_chunks += len(chunks)
                 indexed_pages += 1
                 
@@ -91,6 +94,19 @@ class IndexerService:
         logger.info(f"Indexing complete: {stats}")
         return stats
     
+    async def _save_products(self, mongodb, page: Dict) -> None:
+        """Upsert detected products into the per-domain catalog used for chat cards."""
+        from datetime import datetime
+        from app.services.products import site_domain
+        domain = site_domain(page["url"])
+        for p in page["products"]:
+            await mongodb.db.products.update_one(
+                {"domain": domain, "url": p["url"], "name": p["name"]},
+                {"$set": {**p, "domain": domain, "page_url": page["url"],
+                          "updated_at": datetime.utcnow()}},
+                upsert=True,
+            )
+
     def _create_chunks(self, page: Dict) -> List[Document]:
         """Create document chunks from a page."""
         content = page.get("content", "")

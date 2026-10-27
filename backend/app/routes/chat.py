@@ -47,6 +47,23 @@ async def check_handoff_suggestion(site_id: str, answer: str, confidence: float)
     return False, None
 
 
+async def _products_for_answer(mongodb, site_id: str, answer: str) -> list:
+    """Shop products (from the crawl catalog) whose names appear in the answer."""
+    from app.services.products import match_products, site_domain
+    site = await mongodb.db.sites.find_one({"site_id": site_id}, {"url": 1, "config": 1})
+    if not site:
+        return []
+    if ((site.get("config") or {}).get("behavior") or {}).get("product_cards") is False:
+        return []
+    domain = site_domain(site.get("url") or "")
+    if not domain:
+        return []
+    products = await mongodb.db.products.find(
+        {"domain": domain}, {"_id": 0, "name": 1, "url": 1, "image": 1, "price": 1, "currency": 1}
+    ).to_list(2000)
+    return match_products(answer, products)
+
+
 @router.post("", response_model=ChatResponse)
 @limiter.limit(f"{settings.RATE_LIMIT_REQUESTS}/minute")
 async def chat(request: Request, body: ChatRequest):
@@ -86,6 +103,12 @@ async def chat(request: Request, body: ChatRequest):
         
         response.suggest_handoff = suggest_handoff
         response.handoff_reason = handoff_reason
+
+        if body.site_id:
+            try:
+                response.products = await _products_for_answer(mongodb, body.site_id, response.answer)
+            except Exception as e:
+                logger.debug(f"Product matching failed: {e}")
 
         if body.site_id and is_new_conversation:
             try:
