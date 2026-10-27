@@ -47,7 +47,10 @@ def _resolve_openai_style() -> tuple:
     if p == "deepseek":
         return (settings.DEEPSEEK_BASE_URL or _DEFAULT_BASES[p]).rstrip("/"), settings.DEEPSEEK_API_KEY
     if p == "groq":
-        return (settings.OPENAI_BASE_URL or _DEFAULT_BASES[p]).rstrip("/"), settings.GROQ_API_KEY or settings.OPENAI_API_KEY
+        # OPENAI_BASE_URL is for openai/litellm/openai_compatible only — a
+        # leftover value must not hijack the Groq endpoint.
+        return (getattr(settings, "GROQ_BASE_URL", None) or _DEFAULT_BASES[p]).rstrip("/"), \
+            settings.GROQ_API_KEY or settings.OPENAI_API_KEY
     return (settings.OPENAI_BASE_URL or _DEFAULT_BASES["openai"]).rstrip("/"), settings.OPENAI_API_KEY
 
 
