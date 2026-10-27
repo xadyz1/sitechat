@@ -2150,6 +2150,7 @@
     const I = document["createElement"]("div");
     I["className"] = "sitechat-products" + (G["length"] > 1 ? " multi" : "");
     G["forEach"](J => {
+      try {
       const hasCart = !!J["cart_url"];
       const K = document["createElement"](hasCart ? "div" : "a");
       K["className"] = "sitechat-product-card";
@@ -2179,6 +2180,9 @@
         K["appendChild"](actions);
       }
       I["appendChild"](K);
+      } catch (cardErr) {
+        console["warn"]("SwiftChat skipped a product card:", cardErr);
+      }
     }), H["appendChild"](I);
   }
   function appendMessage(G, H, I = [], products = []) {
