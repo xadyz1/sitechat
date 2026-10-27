@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SwiftChat Documentation — Platform Guide</title>
+  <link rel="icon" href="/icons/favicon-32.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --brand: #7B3DFB; --ink: #0f172a; --muted: #64748b; --border: #e2e8f0;
+      --bg: #ffffff; --soft: #f8fafc; --card: #ffffff;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; scroll-padding-top: 84px; }
+    body { font-family: 'Poppins', system-ui, sans-serif; color: var(--ink); background: var(--bg); }
+    a { color: var(--brand); text-decoration: none; }
+    code { font-family: 'IBM Plex Mono', monospace; font-size: .88em; background: var(--soft); border: 1px solid var(--border); padding: 1px 6px; border-radius: 5px; }
+    pre { font-family: 'IBM Plex Mono', monospace; font-size: 13px; background: #0f172a; color: #e2e8f0; padding: 16px 18px; border-radius: 10px; overflow-x: auto; margin: 14px 0 20px; }
+    pre code { background: none; border: none; padding: 0; color: inherit; }
+
+    .docs-topbar { position: fixed; top: 0; left: 0; right: 0; height: 64px; z-index: 50; display: flex; align-items: center; gap: 16px; padding: 0 24px; background: rgba(255,255,255,.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+    .docs-logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; color: var(--ink); }
+    .docs-logo img { width: 30px; height: 30px; border-radius: 7px; }
+    .docs-topbar nav { margin-left: auto; display: flex; gap: 18px; align-items: center; }
+    .docs-topbar nav a { font-size: 13.5px; font-weight: 500; color: var(--muted); }
+    .docs-topbar nav a:hover { color: var(--ink); }
+    .btn { display: inline-flex; align-items: center; padding: 8px 16px; border-radius: 8px; font-size: 13.5px; font-weight: 600; }
+    .btn-primary { background: var(--brand); color: #fff !important; }
+    .docs-nav-toggle { display: none; margin-left: auto; width: 40px; height: 40px; border: 1px solid var(--border); border-radius: 8px; background: #fff; cursor: pointer; }
+    .docs-nav-toggle span { display: block; width: 18px; height: 2px; background: var(--ink); margin: 3.5px auto; border-radius: 2px; }
+
+    .docs-layout { display: flex; max-width: 1240px; margin: 64px auto 0; }
+    .docs-side { width: 264px; flex-shrink: 0; position: sticky; top: 64px; height: calc(100vh - 64px); overflow-y: auto; padding: 32px 20px 60px 24px; border-right: 1px solid var(--border); }
+    .docs-side h4 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); margin: 22px 0 8px; }
+    .docs-side h4:first-child { margin-top: 0; }
+    .docs-side a { display: block; font-size: 13.5px; color: var(--muted); padding: 5px 10px; border-radius: 6px; border-left: 2px solid transparent; }
+    .docs-side a:hover { color: var(--ink); background: var(--soft); }
+    .docs-side a.active { color: var(--brand); font-weight: 600; border-left-color: var(--brand); border-radius: 0 6px 6px 0; }
+
+    .docs-main { flex: 1; min-width: 0; padding: 40px 56px 120px; }
+    .docs-main h1 { font-size: 32px; font-weight: 700; margin-bottom: 10px; }
+    .docs-main .docs-lead { font-size: 16px; color: var(--muted); margin-bottom: 48px; max-width: 640px; }
+    .docs-main h2 { font-size: 22px; font-weight: 600; margin: 56px 0 12px; padding-top: 20px; }
+    .docs-main h3 { font-size: 16.5px; font-weight: 600; margin: 28px 0 8px; }
+    .docs-main p, .docs-main li { font-size: 14.5px; line-height: 1.75; color: #334155; }
+    .docs-main p { margin-bottom: 12px; }
+    .docs-main ul, .docs-main ol { margin: 0 0 14px 22px; }
+    .docs-main li { margin-bottom: 5px; }
+    .docs-callout { border: 1px solid var(--border); border-left: 3px solid var(--brand); background: var(--soft); border-radius: 8px; padding: 12px 16px; font-size: 13.5px; color: #334155; margin: 16px 0; }
+    .docs-callout b { color: var(--ink); }
+    .plan-tag { display: inline-block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; background: var(--brand); color: #fff; padding: 2px 8px; border-radius: 99px; vertical-align: middle; margin-left: 6px; }
+
+    @media (max-width: 960px) {
+      .docs-side { position: fixed; z-index: 60; top: 64px; left: 0; bottom: 0; width: 280px; background: #fff; transform: translateX(-100%); transition: transform .25s ease; box-shadow: 4px 0 24px rgba(0,0,0,.08); }
+      .docs-side.open { transform: none; }
+      .docs-nav-toggle { display: block; }
+      .docs-topbar nav { display: none; }
+      .docs-main { padding: 32px 22px 100px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="docs-topbar">
+    <a class="docs-logo" href="/"><img src="/icons/icon-192.png" alt="SwiftChat"> SwiftChat <span style="font-weight:500;color:var(--muted);font-size:13px">Docs</span></a>
+    <button class="docs-nav-toggle" id="docs-nav-toggle" aria-label="Toggle navigation"><span></span><span></span><span></span></button>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/hc">Help Center</a>
+      <a href="/#pricing">Pricing</a>
+      <a href="/login" class="btn btn-primary">Dashboard</a>
+    </nav>
+  </header>
+
+  <div class="docs-layout">
+    <aside class="docs-side" id="docs-side">
+      <h4>Getting Started</h4>
+      <a href="#overview">Overview</a>
+      <a href="#adding-a-site">Adding a site</a>
+      <a href="#brand-detection">Brand detection</a>
+      <a href="#embedding">Embedding the widget</a>
+      <h4>Knowledge</h4>
+      <a href="#crawling">Website crawling</a>
+      <a href="#documents">Documents &amp; text</a>
+      <a href="#video-knowledge">Video knowledge</a>
+      <a href="#qa-overrides">Q&amp;A overrides</a>
+      <a href="#business-info">Business info</a>
+      <h4>Widget</h4>
+      <a href="#appearance">Appearance</a>
+      <a href="#launcher">Launcher &amp; behaviour</a>
+      <a href="#visibility">Visibility rules</a>
+      <a href="#custom-css-js">Custom CSS / JS</a>
+      <h4>Help Center</h4>
+      <a href="#help-center">Portal &amp; articles</a>
+      <a href="#hc-templates">Templates</a>
+      <a href="#custom-domain">Custom domain</a>
+      <h4>Conversations</h4>
+      <a href="#inbox">Inbox &amp; analytics</a>
+      <a href="#handoff">Human handoff</a>
+      <a href="#leads">Lead capture</a>
+      <a href="#notifications">Notifications</a>
+      <h4>Administration</h4>
+      <a href="#team">Team &amp; agents</a>
+      <a href="#platform">Platform &amp; users</a>
+      <a href="#plans-billing">Plans &amp; billing</a>
+      <a href="#pwa">PWA &amp; install</a>
+      <a href="#deployment">Deployment</a>
+    </aside>
+
+    <main class="docs-main">
+      <h1>Platform Guide</h1>
+      <p class="docs-lead">Everything SwiftChat can do — from adding your first site and fetching its brand, to customising the widget, publishing a Help Center and managing plans.</p>
+
+      <h2 id="overview">Overview</h2>
+      <p>SwiftChat is a self-hosted AI customer-support platform: a RAG engine trained on your content, an embeddable chat widget, a public Help Center, human handoff and lead capture — managed from one dashboard.</p>
+      <ul>
+        <li><strong>Sites</strong> — each site is an isolated knowledge base + widget configuration.</li>
+        <li><strong>Widget</strong> — one script tag embeds chat on any website.</li>
+        <li><strong>Help Center</strong> — browsable inside the widget or as a public portal.</li>
+        <li><strong>Dashboard</strong> — sites, conversations, handoffs, analytics, team and platform settings.</li>
+      </ul>
+
+      <h2 id="adding-a-site">Adding a site</h2>
+      <p>From <strong>Sites → + Add</strong>, choose one of three modes:</p>
+      <ul>
+        <li><strong>Crawl Website</strong> — paste a URL; the crawler indexes pages automatically.</li>
+        <li><strong>Upload Documents</strong> — knowledge from files only, no website crawl.</li>
+        <li><strong>Both</strong> — crawl the site and upload documents together.</li>
+      </ul>
+      <p>While creating, click <strong>Fetch brand info</strong> to preview detected branding — or skip it and it fetches automatically on create.</p>
+
+      <h2 id="brand-detection">Brand detection</h2>
+      <p>Brand detection reads the site's real homepage (rendered through a headless browser for SPAs) and extracts:</p>
+      <ul>
+        <li>Site name and detected language</li>
+        <li>Favicon / touch icon — used as the site thumbnail and widget avatar</li>
+        <li>Brand colour palette — the primary colour is applied to widget and Help Center</li>
+        <li>Suggested questions in the detected language, built from real page headings</li>
+      </ul>
+      <p>On an existing site, use <strong>Fetch Brand</strong> in the site actions row. The preview shows exactly what will be applied before you confirm. Applying writes the favicon, primary colour, avatar, Help Center locale and quick prompts — it replaces the current values for those fields.</p>
+
+      <h2 id="embedding">Embedding the widget</h2>
+      <p>Copy the embed snippet from the site's <strong>Embed</strong> tab and paste it before <code>&lt;/body&gt;</code> on any website, SPA or store:</p>
+      <pre>&lt;script src="https://your-host/widget/chatbot.js"
+        data-site-id="YOUR_SITE_ID"
+        data-api-url="https://your-host"&gt;&lt;/script&gt;</pre>
+      <p>All configuration is managed from the dashboard — no code changes or redeploys needed on the target site.</p>
+
+      <h2 id="crawling">Website crawling</h2>
+      <p>The crawler follows links within your domain, respects <code>robots.txt</code> and sitemaps, and stores each page's text for retrieval.</p>
+      <ul>
+        <li><strong>SPA support</strong> — pages whose static HTML is too thin are re-rendered through headless Chromium automatically (set <code>CRAWLER_JS_RENDER=true</code>).</li>
+        <li><strong>Re-crawl</strong> — refresh content any time from the site actions, or schedule automatic re-indexing under <em>Schedule</em>.</li>
+        <li><strong>Failures</strong> — a crawl that finds no readable content reports the reason (e.g. JS-rendered shell) directly on the site row.</li>
+      </ul>
+
+      <h2 id="documents">Documents &amp; text</h2>
+      <p><strong>Add Docs</strong> accepts PDF, DOCX, TXT, MD, CSV, PPTX, XLSX and HTML (up to 50&nbsp;MB each). Files are parsed, chunked and indexed for retrieval. Free-text blocks and the shared <em>Business information</em> block work the same way — one edit re-indexes automatically.</p>
+
+      <h2 id="video-knowledge">Video knowledge <span class="plan-tag">Advanced</span></h2>
+      <p>Paste a video URL in the upload modal and SwiftChat pulls its text into the knowledge base:</p>
+      <ul>
+        <li><strong>YouTube</strong> — fetches the caption transcript (manual captions preferred over auto-generated; English/Portuguese preferred when both exist).</li>
+        <li><strong>Other video pages</strong> — uses declared subtitle tracks when available, otherwise the page's title and description.</li>
+      </ul>
+      <p>The transcript becomes a normal knowledge document — the bot can answer anything covered in the video, with the video listed in <em>Knowledge</em>.</p>
+
+      <h2 id="qa-overrides">Q&amp;A overrides</h2>
+      <p>Fix a single answer without touching the rest of the knowledge base. Add a question and its correct answer; it takes priority over generated responses. Manage them under <em>Q&amp;A</em> in site settings — useful for pricing, policies and anything the bot gets wrong.</p>
+
+      <h2 id="business-info">Business info</h2>
+      <p>A reusable context block (address, hours, policies, tone of voice) injected into every conversation — set once per site, applies to all answers.</p>
+
+      <h2 id="appearance">Appearance</h2>
+      <p>The <strong>Appearance</strong> tab customises everything visual, with a live on-page preview:</p>
+      <ul>
+        <li><strong>Themes</strong> — six presets: Light, Light Accent, Light Soft, Pattern Light, Pattern Accent and Dark.</li>
+        <li><strong>Sections</strong> — independent colour controls for Header, Chat area, Message field and Footer, plus font family.</li>
+        <li><strong>Agent profile</strong> — display name, caption/status line, avatar image and online indicator.</li>
+        <li><strong>Welcome</strong> — welcome message and quick-prompt suggestion chips.</li>
+      </ul>
+
+      <h2 id="launcher">Launcher &amp; behaviour</h2>
+      <ul>
+        <li><strong>Launcher</strong> — icon, text label or combined styles; custom icon image; position (left/right) with pixel offsets; window size and open mode.</li>
+        <li><strong>Behaviour</strong> — auto-open delay, proactive trigger messages by page/time/scroll, message sounds and typing indicator.</li>
+      </ul>
+
+      <h2 id="visibility">Visibility rules</h2>
+      <p>Show the widget only where it belongs: page-URL targeting, device targeting (desktop/mobile) and schedule windows (e.g. business hours). Off-hours visitors can see an offline form instead.</p>
+
+      <h2 id="custom-css-js">Custom CSS / JS</h2>
+      <p>Inject your own CSS and JavaScript into the widget from <em>Appearance → Advanced</em> — deep integration without forking the widget code.</p>
+
+      <h2 id="help-center">Help Center portal</h2>
+      <p>Each site can publish a full knowledge base: categories with icons, articles with rich content, and AJAX live search. Visitors browse it inside the widget's <em>Help</em> tab or on the public portal at <code>/hc/your-site</code>.</p>
+      <ul>
+        <li><strong>Manage content</strong> — create/edit categories and articles from the Help Center tab; pick or upload category icons.</li>
+        <li><strong>Locales</strong> — publish the same portal in multiple languages with a per-visitor language selector.</li>
+        <li><strong>Appearance</strong> — portal title, header text, brand colour, logo (also used as favicon) and social links.</li>
+      </ul>
+      <p>See it live on our own portal: <a href="/hc">agent.swiftapps.cloud/hc</a>.</p>
+
+      <h2 id="hc-templates">Templates</h2>
+      <p>Two layouts ship with the portal: <strong>Classic</strong> (hero search header) and <strong>Documentation</strong> (sidebar navigation). Switch any time in Help Center settings — visitors can preview both on the <a href="/hc">SwiftChat Help Center</a>.</p>
+
+      <h2 id="custom-domain">Custom domain <span class="plan-tag">Advanced</span></h2>
+      <p>Serve the portal on your own subdomain, e.g. <code>help.yourcompany.com</code>. Create a DNS record pointing to your SwiftChat host, then set the custom domain in Help Center settings — the portal serves at the domain root.</p>
+
+      <h2 id="inbox">Inbox &amp; analytics</h2>
+      <p><strong>Conversations</strong> lists every chat with the full transcript; <strong>Analytics</strong> shows chat volume, top questions, satisfaction ratings and feedback trends per site.</p>
+
+      <h2 id="handoff">Human handoff</h2>
+      <p>When AI confidence drops or a visitor asks for a human, the conversation enters the <strong>Handoffs</strong> queue. Agents claim threads, see the full AI transcript and reply live. Handoff requires assigned agents — the Live Agent button hides automatically when none are configured. Off-hours requests become offline email tickets.</p>
+
+      <h2 id="leads">Lead capture</h2>
+      <p>Visitor emails are captured inside the widget and listed under <strong>Leads</strong> with the conversation they came from — exportable to CSV and webhook-able for CRM sync.</p>
+
+      <h2 id="notifications">Notifications</h2>
+      <p>Per-site OneSignal configuration (kept private — never exposed in the public widget config) delivers browser push on new leads and handoff requests. Email notifications cover the same events.</p>
+
+      <h2 id="team">Team &amp; agents</h2>
+      <p>Invite agents and assign them to sites. Agents see only their assigned sites' conversations and handoffs; account owners keep full control.</p>
+
+      <h2 id="platform">Platform &amp; users</h2>
+      <p>Master admins manage every account under <strong>Platform</strong>: create/edit users, set plans, suspend accounts, and delete users with the choice to <em>transfer their sites and agents to the master account</em> or remove everything. The same section configures landing-page content (ad slots, demo site, booking embed).</p>
+
+      <h2 id="plans-billing">Plans &amp; billing</h2>
+      <ul>
+        <li><strong>Basic (€10/mo)</strong> — widget, crawler, lead capture, standard AI engine, core analytics.</li>
+        <li><strong>Advanced (€25/mo)</strong> — adds white-label, Help Center portal + custom domain, video knowledge, human handoff and priority support.</li>
+      </ul>
+      <p>Yearly billing saves ~17%. VAT applies at the legal rate. Stripe price IDs are configured through environment variables.</p>
+
+      <h2 id="pwa">PWA &amp; install</h2>
+      <p>The dashboard and landing are installable Progressive Web Apps (manifest + service worker). Serve over HTTPS and use the browser's <em>Add to Home Screen</em> — bottom-nav mobile layout included.</p>
+
+      <h2 id="deployment">Deployment</h2>
+      <p>Docker-first: the <code>Dockerfile</code> produces a single all-in-one image (backend + frontend + crawler + headless browser). Required environment:</p>
+      <pre>MONGODB_URL=mongodb://mongo:27017
+MONGODB_DB=sitechat
+JWT_SECRET=&lt;random 32+ chars&gt;
+SITE_URL=https://your-host
+MASTER_ADMIN_EMAIL=you@company.com
+CRAWLER_JS_RENDER=true</pre>
+      <p><code>docker-compose.yml</code> adds MongoDB and optional Ollama; on Coolify deploy via the Dockerfile plus a separate MongoDB resource with <code>MONGODB_URL</code> pointing at it.</p>
+
+      <div class="docs-callout"><b>Missing something?</b> The Help Center at <a href="/hc">/hc</a> has bite-sized versions of these guides for your own visitors — and the in-widget Help tab serves the same articles during chats.</div>
+    </main>
+  </div>
+
+  <script>
+    (function () {
+      var side = document.getElementById('docs-side');
+      document.getElementById('docs-nav-toggle').addEventListener('click', function () {
+        side.classList.toggle('open');
+      });
+      side.querySelectorAll('a').forEach(function (a) {
+        a.addEventListener('click', function () { side.classList.remove('open'); });
+      });
+      // scrollspy
+      var links = Array.prototype.slice.call(side.querySelectorAll('a'));
+      var heads = links.map(function (a) { return document.querySelector(a.getAttribute('href')); });
+      function spy() {
+        var pos = window.scrollY + 120, active = 0;
+        heads.forEach(function (h, i) { if (h && h.offsetTop <= pos) active = i; });
+        links.forEach(function (a, i) { a.classList.toggle('active', i === active); });
+      }
+      window.addEventListener('scroll', spy, { passive: true });
+      spy();
+    })();
+  </script>
+</body>
+</html>

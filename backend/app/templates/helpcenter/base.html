@@ -318,6 +318,32 @@
     @media (max-width: 1100px) {
       .hc-toc { display: none; }
     }
+
+    /* ── Demo template switcher ─────────────────────────── */
+    .hc-demo-switch {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 60;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 6px;
+      border-radius: 999px;
+      background: var(--hc-card);
+      border: 1px solid var(--hc-border);
+      box-shadow: 0 8px 30px rgba(0,0,0,0.15);
+    }
+    .hc-demo-switch-label { font-size: 12px; color: var(--hc-muted); padding: 0 6px 0 10px; }
+    .hc-demo-opt {
+      font-size: 13px;
+      font-weight: 600;
+      padding: 6px 14px;
+      border-radius: 999px;
+      color: var(--hc-muted);
+    }
+    .hc-demo-opt.active { background: var(--hc-brand); color: #fff; }
     @media (max-width: 900px) {
       .hc-sidebar { display: none; }
       .hc-main { padding: 28px 20px 60px; }
@@ -423,6 +449,13 @@
     </div>
   {% endif %}
 
+  {% if demo_template %}
+  <div class="hc-demo-switch" role="group" aria-label="Help Center template">
+    <span class="hc-demo-switch-label">Template:</span>
+    <a class="hc-demo-opt {% if demo_template != 'classic' %}active{% endif %}" href="?template=modern">Modern</a>
+    <a class="hc-demo-opt {% if demo_template == 'classic' %}active{% endif %}" href="?template=classic">Classic</a>
+  </div>
+  {% endif %}
   <footer class="hc-footer">
     {% if social_links %}
       <span class="hc-social">

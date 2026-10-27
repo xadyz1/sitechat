@@ -479,3 +479,85 @@ async def update_business_info(
         {"$set": {"has_documents": True, "updated_at": datetime.utcnow()}},
     )
     return {"success": True, "doc_id": BUSINESS_INFO_DOC_ID}
+
+
+# --------------------------- Video knowledge (Advanced) ---------------------------
+
+class VideoBody(BaseModel):
+    url: str
+    title: Optional[str] = None
+
+
+ADVANCED_PLANS = {"advanced", "enterprise", "master"}
+
+
+def _require_advanced(user: dict):
+    plan = (user.get("plan") or "trial").lower()
+    if plan not in ADVANCED_PLANS and user.get("role") not in ("admin", "master"):
+        raise HTTPException(
+            status_code=403,
+            detail="Video knowledge requires the Advanced plan.",
+        )
+
+
+@router.post("/video/{site_id}")
+async def add_video_source(
+    site_id: str,
+    body: VideoBody,
+    background_tasks: BackgroundTasks,
+    user: dict = Depends(require_auth),
+):
+    """Fetch a video URL (YouTube transcript or page metadata) into the knowledge base. Advanced plan."""
+    from app.services.video import extract_youtube_id, fetch_youtube_transcript, fetch_video_metadata
+
+    await _check_site_access(site_id, user)
+    _require_advanced(user)
+
+    url = (body.url or "").strip()
+    if not url.startswith(("http://", "https://")):
+        raise HTTPException(status_code=400, detail="A valid video URL is required")
+
+    yt_id = extract_youtube_id(url)
+    if yt_id:
+        result = await fetch_youtube_transcript(yt_id)
+        text = result.get("transcript", "")
+        title = body.title or result.get("title") or "YouTube video"
+        if result.get("author"):
+            title = f"{title} — {result['author']}"
+    else:
+        result = await fetch_video_metadata(url)
+        text = result.get("text", "")
+        title = body.title or result.get("title") or "Video"
+        if result.get("error"):
+            raise HTTPException(status_code=400, detail=f"Could not fetch video: {result['error']}")
+
+    if not text.strip():
+        raise HTTPException(status_code=422, detail="No transcript or description could be extracted from this video.")
+
+    mongodb = await get_mongodb()
+    doc_id = str(uuid.uuid4())[:12]
+    meta = {"source_type": "video", "video_url": url}
+    await mongodb.db.documents.insert_one({
+        "doc_id": doc_id,
+        "site_id": site_id,
+        "filename": title[:200],
+        "file_type": "video",
+        "word_count": _word_count(text),
+        "char_count": len(text),
+        "content": text,
+        "metadata": meta,
+        "status": "processing",
+        "uploaded_at": datetime.utcnow(),
+        "uploaded_by": str(user["_id"]),
+    })
+    background_tasks.add_task(_index_single_document, site_id, {
+        "doc_id": doc_id,
+        "filename": title[:200],
+        "text": text,
+        "metadata": meta,
+    })
+    await mongodb.db.sites.update_one(
+        {"site_id": site_id},
+        {"$set": {"has_documents": True, "updated_at": datetime.utcnow()}},
+    )
+    return {"success": True, "doc_id": doc_id, "title": title, "words": _word_count(text)}

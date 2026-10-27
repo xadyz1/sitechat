@@ -2399,6 +2399,15 @@
                 </button>
             </div>
             <form id="upload-form" class="modal-form">
+                <div class="video-add-row" id="video-add-row" hidden>
+                    <label class="video-add-label" for="video-url-input">Video URL <span class="plan-chip">Advanced</span></label>
+                    <div class="video-add-inline">
+                        <input type="url" id="video-url-input" placeholder="https://youtube.com/watch?v=… or any video page">
+                        <button type="button" class="btn btn-secondary" id="add-video-btn">Fetch Video</button>
+                    </div>
+                    <p class="field-hint">The transcript/captions or description becomes knowledge the bot can answer from.</p>
+                    <p class="video-add-status" id="video-add-status"></p>
+                </div>
                 <div class="upload-zone" id="upload-zone-existing">
                     <div class="upload-icon">
                         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">

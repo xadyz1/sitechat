@@ -11946,7 +11946,8 @@ body.is-master .is-master-only { display: flex !important; }
 
 /* Site icon thumbnails (favicon over the letter initial) */
 .site-list-icon,
-.site-favicon { position: relative; overflow: hidden; }
+.site-favicon,
+.detail-site-icon { position: relative; overflow: hidden; }
 .site-icon-img {
     position: absolute;
     inset: 0;
@@ -11967,3 +11968,32 @@ body.is-master .is-master-only { display: flex !important; }
     word-break: break-word;
 }
 .bp-actions { display: flex; gap: 8px; margin-top: 12px; }
+
+/* Mobile: hard cap content at device width — nothing may overflow horizontally */
+@media (max-width: 768px) {
+    html, body { overflow-x: hidden; max-width: 100%; }
+    body { width: 100%; }
+    .main, .main-content, .content { width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; }
+    .site-detail, .sites-layout, .view, .panel, .card,
+    .detail-header, .detail-header-info, .quick-actions, .form-grid {
+        max-width: 100%; min-width: 0; box-sizing: border-box;
+    }
+    .sites-layout { grid-template-columns: 1fr !important; }
+    .quick-actions { flex-wrap: wrap; }
+    .quick-actions .btn { flex: 0 1 auto; }
+    input, select, textarea { max-width: 100%; box-sizing: border-box; }
+    img, video, iframe { max-width: 100%; }
+    a, span, p, .detail-site-url { word-break: break-word; overflow-wrap: anywhere; }
+    table { display: block; max-width: 100%; overflow-x: auto; }
+    .code-block, pre, code { max-width: 100%; overflow-x: auto; }
+}
+
+/* Video knowledge row (Advanced) inside upload modal */
+.video-add-row { margin-bottom: 14px; }
+.video-add-label { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+.plan-chip { font-size: 10px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; background: var(--primary); color: #fff; padding: 2px 7px; border-radius: 99px; }
+.video-add-inline { display: flex; gap: 8px; }
+.video-add-inline input { flex: 1; min-width: 0; }
+.video-add-status { margin: 6px 0 0; font-size: 12px; color: var(--gray-500); }
+.video-add-status.ok { color: #15803d; }
+.video-add-status.error { color: #b91c1c; }

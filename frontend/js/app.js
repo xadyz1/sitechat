@@ -452,6 +452,7 @@ function setupEventListeners() {
     document.getElementById('add-documents-btn')?.addEventListener('click', openUploadModal);
     document.getElementById('close-upload-modal')?.addEventListener('click', closeUploadModal);
     document.getElementById('cancel-upload-modal')?.addEventListener('click', closeUploadModal);
+    document.getElementById('add-video-btn')?.addEventListener('click', addVideoToSite);
     document.getElementById('upload-form')?.addEventListener('submit', handleExistingUpload);
     
     // Modal backdrop clicks
@@ -1169,7 +1170,47 @@ function openUploadModal() {
     selectedFilesExisting = [];
     document.getElementById('file-list-existing').innerHTML = '';
     document.getElementById('submit-upload').disabled = true;
+    const videoRow = document.getElementById('video-add-row');
+    const plan = String(currentUser?.plan || 'trial').toLowerCase();
+    const canVideo = currentUser?.is_master || ['admin', 'master'].includes(String(currentUser?.role || '').toLowerCase())
+        || ['advanced', 'enterprise'].includes(plan);
+    if (videoRow) {
+        videoRow.hidden = !canVideo;
+        const inp = document.getElementById('video-url-input');
+        const st = document.getElementById('video-add-status');
+        if (inp) inp.value = '';
+        if (st) { st.textContent = ''; st.className = 'video-add-status'; }
+    }
     elements.uploadModal.classList.add('active');
+}
+
+async function addVideoToSite() {
+    if (!currentDetailSite) return;
+    const inp = document.getElementById('video-url-input');
+    const st = document.getElementById('video-add-status');
+    const btn = document.getElementById('add-video-btn');
+    const url = (inp?.value || '').trim();
+    if (!url.startsWith('http')) {
+        if (st) { st.textContent = 'Paste a valid video URL first.'; st.className = 'video-add-status error'; }
+        return;
+    }
+    btn.disabled = true;
+    if (st) { st.textContent = 'Fetching video transcript…'; st.className = 'video-add-status'; }
+    try {
+        const res = await fetch(`${API_BASE}/documents/video/${currentDetailSite.site_id}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+            body: JSON.stringify({ url })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Failed to fetch video');
+        if (st) { st.textContent = `Added "${data.title}" (${data.words} words) — indexing…`; st.className = 'video-add-status ok'; }
+        inp.value = '';
+    } catch (err) {
+        if (st) { st.textContent = err.message; st.className = 'video-add-status error'; }
+    } finally {
+        btn.disabled = false;
+    }
 }
 
 function closeUploadModal() {
@@ -1455,7 +1496,9 @@ async function openSiteDetails(site) {
 
     const iconLetter = siteName.replace(/https?:\/\//, '').charAt(0).toUpperCase();
     const detailIcon = document.getElementById('detail-icon');
-    if (detailIcon) detailIcon.textContent = iconLetter;
+    if (detailIcon) {
+        detailIcon.innerHTML = iconLetter + (site.favicon_url ? `<img class="site-icon-img" src="${escapeHtml(site.favicon_url)}" alt="" onerror="this.remove()">` : '');
+    }
     
     const nameEl = document.getElementById('detail-site-name');
     if (nameEl) nameEl.textContent = siteName;

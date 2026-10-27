@@ -30,6 +30,7 @@
   <link rel="stylesheet" href="/css/landing.css?v=20260403-2">
   <!-- Local dev: optional override if the API is not the same origin as this page (e.g. page on :3000, API on :8000). -->
   <!-- <meta name="sitechat-api-origin" content="http://127.0.0.1:8000"> -->
+  <script defer src="/js/landing-i18n.js"></script>
 </head>
 <body class="landing" data-sitechat-landing>
   <div class="landing-bg" aria-hidden="true"></div>
@@ -837,7 +838,8 @@
     // Called by the landing-config fetch below (and as a fallback default).
     window.__mountLandingWidget = function (siteId) {
       if (document.getElementById('sitechat-landing-embed')) return;
-      siteId = siteId || '8047d01776c6';
+      siteId = siteId || '';
+      if (!siteId) return;
       // Fallback for async dynamic loads (document.currentScript may be null); see chatbot.js
       window.__sitechatEmbed = { siteId: siteId, apiUrl: apiUrl };
       var s = document.createElement('script');

@@ -47,6 +47,8 @@ from app.routes.helpcenter import router as helpcenter_router
 from app.routes.notifications import router as notifications_router
 from app.routes.portal import router as portal_router
 from app.routes.branding import router as branding_router
+from app.routes.preview import router as preview_router
+from app.routes.demo_hc import router as demo_hc_router
 from app.services.auth import AuthService
 from app.services.scheduler import get_scheduler
 
@@ -201,6 +203,8 @@ app.include_router(helpcenter_router)
 app.include_router(notifications_router)
 app.include_router(portal_router)
 app.include_router(branding_router)
+app.include_router(preview_router)
+app.include_router(demo_hc_router)
 
 # Serve static files (frontend)
 # Get the absolute path to the frontend directory
@@ -344,6 +348,12 @@ async def terms_page():
 async def security_page():
     """Data Security statement (generic legal page)."""
     return _static_page("security.html")
+
+
+@app.get("/docs")
+async def docs_page():
+    """Platform documentation guide."""
+    return _static_page("docs.html")
 
 
 @app.exception_handler(404)
