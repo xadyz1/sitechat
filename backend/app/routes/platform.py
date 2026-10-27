@@ -1,11 +1,17 @@
 """
-Platform settings API routes for white-labeling and global configuration.
+Platform settings API routes for white-labeling and global configuration,
+plus platform-owner (master admin) endpoints for users, plans and finance.
 """
+from datetime import datetime, timezone
+from typing import Optional
+
 from fastapi import APIRouter, HTTPException, Depends
 from loguru import logger
+from pydantic import BaseModel
 
+from app.config import settings
 from app.database import get_mongodb
-from app.routes.auth import require_admin
+from app.routes.auth import require_admin, require_auth
 from app.models.schemas import PlatformWhiteLabelConfig, PlatformWhiteLabelUpdate
 
 router = APIRouter(prefix="/api/platform", tags=["platform"])
@@ -64,3 +70,241 @@ async def reset_whitelabel_config(user: dict = Depends(require_admin)):
     logger.info(f"Platform white-label config reset by user {user.get('email')}")
     
     return PlatformWhiteLabelConfig()
+
+
+# ==================== Master admin (platform owner) ====================
+# The account configured via MASTER_ADMIN_EMAIL gets cross-platform
+# access: users management, subscription plans and finance.
+
+
+def _is_master(user: dict) -> bool:
+    master = (settings.MASTER_ADMIN_EMAIL or "").strip().lower()
+    return bool(master) and (user.get("email") or "").lower() == master
+
+
+async def require_master(user: dict = Depends(require_auth)) -> dict:
+    if not _is_master(user):
+        raise HTTPException(status_code=403, detail="Platform owner access required")
+    return user
+
+
+# --------------------------- Plans ---------------------------
+
+PLAN_DEFINITIONS = [
+    {
+        "id": "trial",
+        "name": "Trial",
+        "monthly_eur": 0,
+        "yearly_eur": 0,
+        "highlights": "Evaluation access — full features while you test.",
+    },
+    {
+        "id": "basic",
+        "name": "Basic",
+        "monthly_eur": 10,
+        "yearly_eur": 100,
+        "highlights": "Standard widget, automatic site crawler, email lead capture, standard AI engine, core analytics.",
+        "stripe_price_monthly": "STRIPE_PRICE_BASIC_MONTHLY",
+        "stripe_price_yearly": "STRIPE_PRICE_BASIC_YEARLY",
+    },
+    {
+        "id": "advanced",
+        "name": "Advanced",
+        "monthly_eur": 25,
+        "yearly_eur": 250,
+        "highlights": "White-Label, unlimited chats and pages, human handoff, priority support, custom domain.",
+        "stripe_price_monthly": "STRIPE_PRICE_ADVANCED_MONTHLY",
+        "stripe_price_yearly": "STRIPE_PRICE_ADVANCED_YEARLY",
+    },
+]
+
+
+@router.get("/plans")
+async def list_plans(user: dict = Depends(require_master)):
+    """Plan catalogue with the Stripe price ids from env (null when unset)."""
+    plans = []
+    for p in PLAN_DEFINITIONS:
+        plan = {k: v for k, v in p.items() if not k.startswith("stripe_price")}
+        monthly_key = p.get("stripe_price_monthly")
+        yearly_key = p.get("stripe_price_yearly")
+        plan["stripe_price_monthly"] = getattr(settings, monthly_key, None) if monthly_key else None
+        plan["stripe_price_yearly"] = getattr(settings, yearly_key, None) if yearly_key else None
+        plans.append(plan)
+    return {"plans": plans, "stripe_configured": bool(settings.STRIPE_SECRET_KEY)}
+
+
+# --------------------------- Users ---------------------------
+
+@router.get("/users")
+async def list_platform_users(user: dict = Depends(require_master)):
+    """All accounts with role, plan and usage stats."""
+    db = await get_mongodb()
+    users = await db.get_all_users()
+    all_sites = await db.list_sites()
+    site_counts = {}
+    for s in all_sites:
+        owner = s.get("user_id")
+        if owner:
+            site_counts[str(owner)] = site_counts.get(str(owner), 0) + 1
+    out = []
+    for u in users:
+        uid = str(u.get("_id"))
+        user_key = u.get("user_id") or uid
+        out.append({
+            "id": uid,
+            "email": u.get("email"),
+            "name": u.get("name"),
+            "role": u.get("role"),
+            "plan": u.get("plan") or "trial",
+            "is_master": _is_master(u),
+            "site_count": site_counts.get(user_key, 0) + site_counts.get(uid, 0),
+            "created_at": u.get("created_at").isoformat() if isinstance(u.get("created_at"), datetime) else u.get("created_at"),
+        })
+    return {"users": out}
+
+
+class PlanUpdate(BaseModel):
+    plan: str
+
+
+@router.put("/users/{user_id}/plan")
+async def set_user_plan(user_id: str, data: PlanUpdate, user: dict = Depends(require_master)):
+    """Assign a subscription plan to a user account."""
+    valid = {p["id"] for p in PLAN_DEFINITIONS}
+    if data.plan not in valid:
+        raise HTTPException(status_code=400, detail=f"Invalid plan. Choose from: {sorted(valid)}")
+    db = await get_mongodb()
+    target = await db.get_user_by_id(user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    await db.update_user(user_id, {"plan": data.plan, "plan_updated_at": datetime.now(timezone.utc)})
+    return {"ok": True, "user_id": user_id, "plan": data.plan}
+
+
+# --------------------------- Finance ---------------------------
+
+async def _stripe_summary() -> dict:
+    """Live MRR/subscription summary from Stripe when a secret key is configured."""
+    if not settings.STRIPE_SECRET_KEY:
+        return {"configured": False}
+    try:
+        import aiohttp
+
+        auth = aiohttp.BasicAuth(settings.STRIPE_SECRET_KEY, "")
+        async with aiohttp.ClientSession(auth=auth) as session:
+            async def _get(path, params=None):
+                async with session.get(f"https://api.stripe.com/v1{path}", params=params or {}) as r:
+                    if r.status != 200:
+                        return None
+                    return await r.json()
+
+            subs = await _get("/subscriptions", {"status": "active", "limit": 100})
+            balance = await _get("/balance")
+            if subs is None:
+                return {"configured": True, "error": "Stripe API request failed"}
+
+            mrr_cents = 0
+            for s in subs.get("data", []):
+                for item in (s.get("items") or {}).get("data", []):
+                    price = item.get("price") or {}
+                    amount = price.get("unit_amount") or 0
+                    qty = item.get("quantity") or 1
+                    interval = (price.get("recurring") or {}).get("interval")
+                    monthly = amount if interval == "month" else (amount / 12 if interval == "year" else 0)
+                    mrr_cents += int(monthly * qty)
+
+            available = sum(
+                b.get("amount", 0) for b in (balance or {}).get("available", [])
+            ) if balance else None
+
+            return {
+                "configured": True,
+                "active_subscriptions": len(subs.get("data", [])),
+                "mrr": round(mrr_cents / 100, 2),
+                "arr": round(mrr_cents * 12 / 100, 2),
+                "balance_available": round(available / 100, 2) if available is not None else None,
+                "currency": settings.STRIPE_CURRENCY,
+            }
+    except Exception as e:
+        return {"configured": True, "error": str(e)}
+
+
+@router.get("/finance")
+async def platform_finance(user: dict = Depends(require_master)):
+    """Revenue and subscription metrics — live Stripe data when configured."""
+    db = await get_mongodb()
+    users = await db.get_all_users()
+    plan_counts = {}
+    for u in users:
+        plan = u.get("plan") or "trial"
+        plan_counts[plan] = plan_counts.get(plan, 0) + 1
+
+    prices = {p["id"]: p["monthly_eur"] for p in PLAN_DEFINITIONS}
+    estimated_mrr = sum(plan_counts.get(pid, 0) * price for pid, price in prices.items())
+
+    stripe = await _stripe_summary()
+    return {
+        "plan_distribution": plan_counts,
+        "estimated_mrr": estimated_mrr,
+        "currency": settings.STRIPE_CURRENCY,
+        "stripe": stripe,
+    }
+
+
+@router.get("/overview")
+async def platform_overview(user: dict = Depends(require_master)):
+    """Top-level platform stats for the master dashboard."""
+    db = await get_mongodb()
+    users = await db.get_all_users()
+    try:
+        site_count = await db.db.sites.count_documents({})
+        conv_count = await db.db.conversations.count_documents({})
+    except Exception:
+        site_count = conv_count = 0
+    return {
+        "total_users": len(users),
+        "total_sites": site_count,
+        "total_conversations": conv_count,
+        "stripe_configured": bool(settings.STRIPE_SECRET_KEY),
+        "onesignal_configured": bool(settings.ONESIGNAL_APP_ID),
+        "smtp_configured": bool(settings.SMTP_HOST),
+    }
+
+
+# --------------------------- Landing page config ---------------------------
+
+class LandingConfigUpdate(BaseModel):
+    ad_slot_1: Optional[str] = None
+    ad_slot_2: Optional[str] = None
+    demo_booking_embed: Optional[str] = None
+    demo_site_id: Optional[str] = None
+
+
+def _landing_response(config: dict) -> dict:
+    return {
+        "ad_slot_1": config.get("ad_slot_1") or "",
+        "ad_slot_2": config.get("ad_slot_2") or "",
+        "demo_booking_embed": config.get("demo_booking_embed") or "",
+        "demo_site_id": config.get("demo_site_id") or "",
+    }
+
+
+@router.get("/landing-config")
+async def get_landing_config():
+    """Public — the landing page reads ad slots, demo chat site and booking embed."""
+    db = await get_mongodb()
+    return _landing_response(await db.get_landing_config() or {})
+
+
+@router.put("/landing-config")
+async def update_landing_config(update: LandingConfigUpdate, user: dict = Depends(require_master)):
+    """Master-only — update ad slot snippets, demo chat site and booking embed."""
+    db = await get_mongodb()
+    config = await db.get_landing_config() or {}
+    for key in ("ad_slot_1", "ad_slot_2", "demo_booking_embed", "demo_site_id"):
+        val = getattr(update, key)
+        if val is not None:
+            config[key] = val
+    updated = await db.update_landing_config(config)
+    logger.info(f"Landing config updated by {user.get('email')}")
+    return _landing_response(updated)

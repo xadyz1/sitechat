@@ -107,6 +107,7 @@ class IndexerService:
             doc = Document(
                 page_content=text,
                 metadata={
+                    **page.get("metadata", {}),
                     "url": page["url"],
                     "title": page["title"],
                     "chunk_index": i,

@@ -70,7 +70,14 @@ async def capture_lead(request: Request, body: LeadCreate):
     lead = await mongodb.save_lead(lead_data)
 
     logger.info(f"Captured lead {lead['id']} for site {body.site_id}: {body.email or body.name}")
-    
+
+    # Push notification (fire-and-forget; no-ops when OneSignal isn't configured)
+    try:
+        from app.services.notifications import notify_new_lead
+        await notify_new_lead(body.site_id, body.session_id, body.email, body.name, body.source)
+    except Exception as e:
+        logger.warning(f"Lead push notification failed: {e}")
+
     return {
         "success": True,
         "lead_id": lead["id"],

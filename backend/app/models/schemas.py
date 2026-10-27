@@ -3,7 +3,7 @@ Pydantic models for API request/response schemas.
 """
 import uuid
 from datetime import datetime
-from typing import List, Optional, Dict, Any
+from typing import List, Literal, Optional, Dict, Any
 from pydantic import BaseModel, Field
 
 
@@ -120,15 +120,125 @@ class HealthCheck(BaseModel):
 
 class SiteAppearanceConfig(BaseModel):
     """Appearance configuration for the chatbot widget."""
-    primary_color: str = Field(default="#0D9488", description="Primary color (hex)")
+    primary_color: str = Field(default="#7B3DFB", description="Primary color (hex)")
     chat_title: str = Field(default="Chat with us", description="Chat widget title")
     welcome_message: str = Field(default="Hi! How can I help you today?", description="Welcome message")
     bot_avatar_url: Optional[str] = Field(default=None, description="Custom bot avatar URL")
-    position: str = Field(default="bottom-right", description="Widget position: bottom-left or bottom-right")
+    position: str = Field(default="bottom-right", description="Widget position: bottom-left, bottom-center or bottom-right")
     # White-label options
-    hide_branding: bool = Field(default=False, description="Hide 'Powered by SiteChat' branding")
-    custom_branding_text: Optional[str] = Field(default=None, description="Custom branding text (replaces 'Powered by SiteChat')")
+    hide_branding: bool = Field(default=False, description="Hide 'Powered by SwiftChat' branding")
+    custom_branding_text: Optional[str] = Field(default=None, description="Custom branding text (replaces 'Powered by SwiftChat')")
     custom_branding_url: Optional[str] = Field(default=None, description="URL for custom branding link")
+
+    # Agent profile
+    agent_caption: str = Field(default="Powered by AI", description="Subtitle/caption under the agent name (e.g. 'Online', 'Disponível')")
+    show_online_indicator: bool = Field(default=True, description="Show green online dot on the agent avatar")
+    online_indicator_color: str = Field(default="#22C55E", description="Online indicator dot color (hex)")
+
+    # Theme preset — provides palette defaults; explicit colors below override it.
+    # light | light_accent | light_soft | pattern_light | pattern_accent | dark
+    theme: str = Field(default="light_accent", description="Widget theme preset")
+
+    # Theme colors — None/empty falls back to theme/primary-derived defaults
+    header_background: Optional[str] = Field(default=None, description="Header background color (hex), defaults to theme")
+    header_text_color: Optional[str] = Field(default=None, description="Header text color (hex), defaults to theme")
+    chat_background: Optional[str] = Field(default=None, description="Messages area background (hex), defaults to theme")
+    bot_message_background: Optional[str] = Field(default=None, description="Bot bubble background (hex), defaults to theme")
+    bot_message_color: Optional[str] = Field(default=None, description="Bot bubble text color (hex), defaults to theme")
+    user_message_background: Optional[str] = Field(default=None, description="User bubble background (hex), defaults to primary")
+    user_message_color: Optional[str] = Field(default=None, description="User bubble text color (hex), defaults to theme")
+    input_background: Optional[str] = Field(default=None, description="Message field background (hex), defaults to theme")
+    input_text_color: Optional[str] = Field(default=None, description="Message field text color (hex), defaults to theme")
+    input_placeholder: str = Field(default="Type your message...", description="Message field placeholder text")
+    send_button_color: Optional[str] = Field(default=None, description="Send button color (hex), defaults to primary")
+    launcher_background: Optional[str] = Field(default=None, description="Launcher button background (hex), defaults to primary")
+    launcher_icon_color: str = Field(default="#FFFFFF", description="Launcher button icon/text color (hex)")
+    border_radius: int = Field(default=16, ge=0, le=28, description="Corner radius (px) for window, bubbles, input and launcher")
+    footer_text: Optional[str] = Field(default=None, description="Disclaimer text shown above the branding footer")
+    footer_text_color: Optional[str] = Field(default=None, description="Disclaimer/footer text color (hex), defaults to theme muted")
+    font_family: Optional[str] = Field(default=None, description="Widget font family (e.g. Inter, Roboto, Poppins)")
+
+    # Layout
+    window_width: int = Field(default=400, ge=280, le=640, description="Chat window width in px")
+    window_height: int = Field(default=560, ge=320, le=860, description="Chat window height in px")
+    launcher_style: str = Field(
+        default="button",
+        description="Launcher style: button, text_button, agent_profile, quick_input"
+    )
+    launcher_text: Optional[str] = Field(default=None, description="Text for text_button/quick_input launchers")
+    launcher_icon: Optional[str] = Field(
+        default=None,
+        description="Launcher icon: built-in name (chat, headset, help, bell, star, bolt, robot, smile) or image URL/data URL"
+    )
+
+    # Placement & offsets (position also accepts: bottom-left, bottom-center, bottom-right)
+    offset_x: int = Field(default=24, ge=0, le=200, description="Horizontal offset of the launcher/window in px")
+    offset_y: int = Field(default=24, ge=0, le=200, description="Vertical offset of the launcher from the bottom in px")
+    movable_window: bool = Field(default=False, description="Let visitors drag and resize the chat window (desktop only)")
+
+    # Start mode & display timing
+    start_mode: Literal["button_only", "greeting", "auto_open"] = Field(
+        default="button_only",
+        description="button_only | greeting = greeting bubble + suggested questions above launcher | auto_open = open chat automatically on desktop"
+    )
+    greeting_message: Optional[str] = Field(default=None, description="Greeting bubble text shown in greeting start mode")
+    start_delay_seconds: int = Field(default=0, ge=0, le=60, description="Delay before the start-mode action runs (0 = on page load)")
+
+    # Sounds — named presets: none, bell, bell2, bright, bright2, bubble, bubble2,
+    # click, click2, digital, fantasy, glass, liquid, notes, plucky, soft, soft2
+    sound_agent_message: str = Field(default="none", description="Sound played when an agent/bot message arrives")
+    sound_visitor_message: str = Field(default="none", description="Sound played when the visitor sends a message")
+
+    # Footer
+    footer_enabled: bool = Field(default=True, description="Show the disclaimer footer text in the widget")
+
+    # Custom code injected into the embedded widget (admin-provided)
+    custom_css: Optional[str] = Field(default=None, description="Custom CSS applied inside the widget")
+    custom_js: Optional[str] = Field(default=None, description="Custom JavaScript executed when the widget loads")
+
+
+class SiteVisibilitySchedule(BaseModel):
+    """Time-based widget visibility window."""
+    enabled: bool = Field(default=False, description="Restrict widget visibility to a schedule")
+    days: List[int] = Field(
+        default_factory=lambda: [1, 2, 3, 4, 5],
+        description="Active days, JS getDay() convention: 0=Sunday … 6=Saturday"
+    )
+    start_time: str = Field(default="09:00", description="Start time HH:MM (24h)")
+    end_time: str = Field(default="18:00", description="End time HH:MM (24h); may cross midnight")
+    timezone: Optional[str] = Field(default=None, description="IANA timezone (e.g. Europe/Lisbon); empty = visitor local time")
+
+
+class SiteVisibilityConfig(BaseModel):
+    """Where/when the embedded widget is shown."""
+    display_pages: Literal["all", "include", "exclude"] = Field(
+        default="all",
+        description="all = every page; include = only listed patterns; exclude = everywhere except listed"
+    )
+    page_urls: List[str] = Field(
+        default_factory=list,
+        description="URL/path patterns, one per entry; '*' matches any characters (e.g. /pricing*, https://example.com/checkout*)"
+    )
+    devices: Literal["all", "desktop", "mobile"] = Field(default="all", description="Limit widget to a device type")
+    schedule: SiteVisibilitySchedule = Field(default_factory=SiteVisibilitySchedule)
+
+
+class SiteSessionConfig(BaseModel):
+    """Chat session persistence for visitors."""
+    persist_session: bool = Field(
+        default=True,
+        description="Keep the conversation across page loads (localStorage). Off = new conversation each visit (sessionStorage)"
+    )
+    persist_visitor: bool = Field(
+        default=True,
+        description="Remember visitor stats (page views, triggers) across visits"
+    )
+    session_timeout_minutes: int = Field(
+        default=0,
+        ge=0,
+        le=10080,
+        description="Start a fresh conversation after N minutes of inactivity; 0 = never expire"
+    )
 
 
 class SiteBehaviorConfig(BaseModel):
@@ -183,12 +293,30 @@ class SiteSecurityConfig(BaseModel):
     )
 
 
+class QuickPromptButton(BaseModel):
+    """A button inside a card prompt."""
+    label: str = Field(..., description="Button text", max_length=60)
+    action: Literal["send_message", "open_url", "talk_to_agent"] = Field(
+        default="send_message",
+        description="Button action: send_message | open_url | talk_to_agent"
+    )
+    value: Optional[str] = Field(
+        default=None,
+        description="Message to send (send_message), URL (open_url); optional for talk_to_agent"
+    )
+
+
 class QuickPrompt(BaseModel):
-    """A single quick prompt/FAQ starter."""
+    """A single quick prompt — either a suggestion chip or an action card."""
     id: str = Field(default_factory=lambda: str(uuid.uuid4())[:8], description="Unique prompt ID")
-    text: str = Field(..., description="The prompt text displayed to user", max_length=100)
+    type: Literal["suggestion", "card"] = Field(default="suggestion", description="Display type: suggestion | card")
+    text: str = Field(..., description="The prompt text displayed to user (card title for cards)", max_length=100)
     icon: Optional[str] = Field(default=None, description="Optional emoji or icon")
     enabled: bool = Field(default=True, description="Whether this prompt is active")
+    # Card fields (type == "card")
+    description: Optional[str] = Field(default=None, description="Card description text", max_length=300)
+    image_url: Optional[str] = Field(default=None, description="Optional card image/icon URL")
+    buttons: List[QuickPromptButton] = Field(default_factory=list, description="Card action buttons")
 
 
 class SiteQuickPromptsConfig(BaseModel):
@@ -206,13 +334,66 @@ class SiteQuickPromptsConfig(BaseModel):
     max_display: int = Field(default=4, ge=1, le=10, description="Maximum prompts to display")
 
 
+class HelpCenterSocialLink(BaseModel):
+    """A social link shown in the portal footer."""
+    network: str = Field(..., description="Network name, e.g. linkedin, twitter, github", max_length=30)
+    handle: str = Field(..., description="Handle or full URL", max_length=200)
+
+
+class SiteHelpCenterConfig(BaseModel):
+    """Help center configuration — syncs articles into the widget and public portal."""
+    enabled: bool = Field(default=False, description="Show the Help tab in the widget")
+    portal_url: Optional[str] = Field(
+        default=None,
+        description="Public help center portal URL to sync articles from (e.g. https://chat.swiftapps.cloud/hc/concha-ai/en)"
+    )
+    tab_label: str = Field(default="Help", description="Widget tab label")
+    # Portal (public /hc/{slug-or-site-id} page)
+    portal_title: Optional[str] = Field(default=None, description="Browser page title, e.g. 'Concha AI | Help Center'")
+    portal_name: Optional[str] = Field(default=None, description="Portal brand name shown in the header")
+    header_text: Optional[str] = Field(default=None, description="Portal heading, e.g. 'Support Portal'")
+    home_page_link: Optional[str] = Field(default=None, description="'Website' link shown in the portal nav")
+    slug: Optional[str] = Field(default=None, description="Custom public slug — /hc/{slug} (defaults to site_id)")
+    brand_color: Optional[str] = Field(default=None, description="Portal accent color, e.g. #007D45")
+    logo_url: Optional[str] = Field(default=None, description="Portal logo image URL")
+    layout: Literal["classic", "documentation"] = Field(default="documentation", description="Portal layout")
+    social_links: List[HelpCenterSocialLink] = Field(default_factory=list, description="Footer social links")
+    embed_widget: bool = Field(default=True, description="Embed the site chat widget on portal pages")
+    locales: List[str] = Field(default_factory=lambda: ["en"], description="Portal languages, e.g. ['en','pt']")
+    default_locale: str = Field(default="en", description="Default portal language")
+    custom_domain: Optional[str] = Field(
+        default=None,
+        description="Custom domain serving this help center (e.g. help.example.com) via DNS CNAME"
+    )
+
+
+class SiteNotificationsConfig(BaseModel):
+    """Push notification configuration (OneSignal) for a site/channel."""
+    enabled: bool = Field(default=False, description="Send push notifications for this site")
+    onesignal_app_id: Optional[str] = Field(default=None, description="OneSignal App ID for this channel")
+    onesignal_rest_api_key: Optional[str] = Field(default=None, description="OneSignal REST API key (server-side only)")
+    notify_new_message: bool = Field(default=True, description="Notify on new visitor message/conversation")
+    notify_new_lead: bool = Field(default=True, description="Notify when a lead is captured")
+    notify_handoff: bool = Field(default=True, description="Notify when a visitor requests a human agent")
+
+
+class SiteHandoffPublicConfig(BaseModel):
+    """Public handoff availability exposed to the widget."""
+    enabled: bool = Field(default=True, description="Human handoff toggle")
+    has_agents: bool = Field(default=False, description="Whether any human agents are assigned to the site")
+
+
 class SiteConfig(BaseModel):
     """Complete site configuration."""
     appearance: SiteAppearanceConfig = Field(default_factory=SiteAppearanceConfig)
+    handoff: SiteHandoffPublicConfig = Field(default_factory=SiteHandoffPublicConfig)
     behavior: SiteBehaviorConfig = Field(default_factory=SiteBehaviorConfig)
     lead_capture: SiteLeadCaptureConfig = Field(default_factory=SiteLeadCaptureConfig)
     security: SiteSecurityConfig = Field(default_factory=SiteSecurityConfig)
     quick_prompts: SiteQuickPromptsConfig = Field(default_factory=SiteQuickPromptsConfig)
+    help_center: SiteHelpCenterConfig = Field(default_factory=SiteHelpCenterConfig)
+    visibility: SiteVisibilityConfig = Field(default_factory=SiteVisibilityConfig)
+    session: SiteSessionConfig = Field(default_factory=SiteSessionConfig)
 
 
 class SiteConfigUpdate(BaseModel):
@@ -222,6 +403,9 @@ class SiteConfigUpdate(BaseModel):
     lead_capture: Optional[SiteLeadCaptureConfig] = None
     security: Optional[SiteSecurityConfig] = None
     quick_prompts: Optional[SiteQuickPromptsConfig] = None
+    help_center: Optional[SiteHelpCenterConfig] = None
+    visibility: Optional[SiteVisibilityConfig] = None
+    session: Optional[SiteSessionConfig] = None
 
 
 # ==================== Lead Models ====================
@@ -730,16 +914,16 @@ class CrawlScheduleResponse(BaseModel):
 
 class PlatformWhiteLabelConfig(BaseModel):
     """Platform-level white-label configuration for dashboard."""
-    app_name: str = Field(default="SiteChat", description="Application name")
+    app_name: str = Field(default="SwiftChat", description="Application name")
     logo_url: Optional[str] = Field(default=None, description="Custom logo URL")
     favicon_url: Optional[str] = Field(default=None, description="Custom favicon URL")
-    primary_color: str = Field(default="#0D9488", description="Primary brand color")
-    secondary_color: str = Field(default="#16a34a", description="Secondary brand color")
-    login_title: str = Field(default="SiteChat", description="Login page title")
+    primary_color: str = Field(default="#7B3DFB", description="Primary brand color")
+    secondary_color: str = Field(default="#EC1DC9", description="Secondary brand color")
+    login_title: str = Field(default="SwiftChat", description="Login page title")
     login_subtitle: str = Field(default="AI-Powered Customer Support", description="Login page subtitle")
     footer_text: Optional[str] = Field(default=None, description="Custom footer text")
     support_email: Optional[str] = Field(default=None, description="Support email address")
-    hide_sitechat_branding: bool = Field(default=False, description="Hide all SiteChat branding")
+    hide_sitechat_branding: bool = Field(default=False, description="Hide all SwiftChat branding")
 
 
 class PlatformWhiteLabelUpdate(BaseModel):

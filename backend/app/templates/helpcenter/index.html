@@ -1,0 +1,47 @@
+{% extends "helpcenter/base.html" %}
+{% block content %}
+  {% if layout != 'classic' %}
+    <h1 class="hc-page-title">{{ header_text }}</h1>
+    <p class="hc-page-sub">Find answers to common questions and learn how to get the most out of {{ portal_name }}.</p>
+    <div class="hc-hero-search">
+      <div class="hc-search-wrap hero">
+        <div class="hc-search-box">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input class="hc-live-search" type="search" placeholder="Search for answers" autocomplete="off">
+        </div>
+        <div class="hc-search-pop" role="listbox"></div>
+      </div>
+    </div>
+    {% if recommended %}
+      <div class="hc-chips-label">Recommended topics</div>
+      <div class="hc-chips">
+        {% for art in recommended %}
+          <a class="hc-chip" href="{{ base_path }}/articles/{{ art.slug }}">{{ art.title }}</a>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endif %}
+
+  {% if categories %}
+    <h2 class="hc-section-title">Browse by topic</h2>
+    <div class="hc-cat-grid">
+      {% for cat in categories %}
+        <a class="hc-cat-card" href="{{ base_path }}/categories/{{ cat.slug }}">
+          <span class="hc-cat-icon">
+            {% if cat.icon_url %}
+              <img src="{{ cat.icon_url }}" alt="">
+            {% elif cat.icon %}
+              <span class="hc-cat-emoji">{{ cat.icon }}</span>
+            {% else %}
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
+            {% endif %}
+          </span>
+          <h3>{{ cat.name }}</h3>
+          <p>{{ cat.article_count }} article{{ 's' if cat.article_count != 1 }}</p>
+        </a>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="hc-empty">No help articles published yet.</div>
+  {% endif %}
+{% endblock %}

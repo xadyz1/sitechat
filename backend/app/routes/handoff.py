@@ -111,7 +111,14 @@ async def create_handoff(request: Request, body: HandoffRequest):
     )
 
     logger.info(f"Created handoff {handoff['handoff_id']} for session {body.session_id}")
-    
+
+    try:
+        from app.services.notifications import notify_handoff
+        await notify_handoff(body.site_id, body.session_id, body.reason,
+                             body.visitor_name, body.visitor_email)
+    except Exception as e:
+        logger.warning(f"Handoff push notification failed: {e}")
+
     return {
         "handoff_id": handoff["handoff_id"],
         "status": "pending",
@@ -178,7 +185,18 @@ async def send_visitor_message(
         content=body.content,
         sender_name=body.sender_name or "Visitor"
     )
-    
+
+    try:
+        from app.services.notifications import notify_new_message
+        await notify_new_message(
+            handoff.get("site_id", ""),
+            handoff.get("session_id", ""),
+            body.content,
+            visitor_name=body.sender_name,
+        )
+    except Exception as e:
+        logger.warning(f"Visitor message push notification failed: {e}")
+
     return {"success": True, "message": message}
 
 
@@ -221,9 +239,16 @@ async def abandon_handoff_public(
 async def check_availability(site_id: str):
     """Check if human agents are available (public for widget)."""
     mongodb = await get_mongodb()
-    
+
     result = await mongodb.check_business_hours(site_id)
-    
+
+    config = await mongodb.get_site_handoff_config(site_id) or {}
+    agents_ready = config.get("enabled", True) and await mongodb.has_assigned_agents(site_id)
+    if not agents_ready:
+        result["available"] = False
+        if not result.get("offline_message"):
+            result["offline_message"] = (config.get("business_hours") or {}).get("offline_message")
+
     return HandoffAvailabilityResponse(
         available=result.get("available", True),
         is_within_hours=result.get("is_within_hours", True),

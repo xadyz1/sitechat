@@ -65,7 +65,7 @@ class CrawlerService:
         
         async with aiohttp.ClientSession(
             timeout=aiohttp.ClientTimeout(total=30),
-            headers={"User-Agent": "SiteChat-Crawler/1.0"}
+            headers={"User-Agent": "SwiftChat-Crawler/1.0"}
         ) as session:
             while queue and len(self.pages) < max_pages:
                 # Get next URL

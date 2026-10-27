@@ -78,3 +78,6 @@ e2e/playwright/.cache/
 *.bak
 *.tmp
 *.temp
+
+# Local MongoDB binary + data
+backend/mongodb-local/

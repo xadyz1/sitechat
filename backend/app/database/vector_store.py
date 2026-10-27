@@ -148,12 +148,35 @@ class VectorStore:
         """Delete documents by metadata filter."""
         if not self._initialized:
             self.initialize()
-        
+
         try:
-            # FAISS doesn't have native delete, so we rebuild without matching docs
-            # This is a workaround - for production, consider using a different vector store
-            logger.warning("FAISS delete_by_metadata is not fully supported, skipping")
-            return False
+            import re as _re
+
+            def _matches(meta: Dict) -> bool:
+                for key, expected in (filter or {}).items():
+                    actual = meta.get(key)
+                    if isinstance(expected, dict) and "$regex" in expected:
+                        if not actual or not _re.search(expected["$regex"], str(actual)):
+                            return False
+                    elif actual != expected:
+                        return False
+                return True
+
+            # Scan the docstore for matching ids, then drop them via FAISS.delete
+            docstore = getattr(self.vector_store, "docstore", None)
+            id_map = getattr(docstore, "_dict", None)
+            if not id_map:
+                logger.warning("FAISS docstore unavailable, cannot delete by metadata")
+                return False
+
+            matching_ids = [doc_id for doc_id, doc in id_map.items() if _matches(doc.metadata or {})]
+            if not matching_ids:
+                return True
+
+            self.vector_store.delete(matching_ids)
+            self._save_index()
+            logger.info(f"Deleted {len(matching_ids)} vectors by metadata filter")
+            return True
         except Exception as e:
             logger.error(f"Failed to delete documents: {e}")
             return False

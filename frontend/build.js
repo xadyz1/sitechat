@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Build script for SiteChat Widget
+ * Build script for SwiftChat Widget
  * Obfuscates and minifies the chatbot widget for production use
  */
 
@@ -42,7 +42,7 @@ const obfuscatorOptions = {
 };
 
 function buildWidget() {
-    console.log('🔨 Building SiteChat Widget...\n');
+    console.log('🔨 Building SwiftChat Widget...\n');
 
     // Ensure dist directory exists
     if (!fs.existsSync(DIST_DIR)) {
@@ -65,8 +65,8 @@ function buildWidget() {
 
     // Add banner comment
     const banner = `/**
- * SiteChat Widget v1.0.0
- * (c) ${new Date().getFullYear()} SiteChat. All rights reserved.
+ * SwiftChat Widget v1.0.0
+ * (c) ${new Date().getFullYear()} SwiftChat. All rights reserved.
  * This code is proprietary and confidential.
  * Unauthorized copying, modification, or distribution is strictly prohibited.
  * 

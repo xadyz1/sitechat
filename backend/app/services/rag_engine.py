@@ -149,15 +149,23 @@ class RAGEngine:
             ChatResponse with answer, sources, and suggestions
         """
         mongodb = await get_mongodb()
-        
+
         # Get site URL filter and name if site_id provided
         site_url_filter = None
         site_name = None
+        knowledge_urls: List[str] = []
+        site_behavior: Dict = {}
         if site_id:
             site = await mongodb.db.sites.find_one({"site_id": site_id})
             if site:
                 site_url_filter = site.get("url", "").rstrip("/")
                 site_name = site.get("name") or site_url_filter.replace("https://", "").replace("http://", "")
+                knowledge_urls = [
+                    (u.get("url") or "").rstrip("/")
+                    for u in (site.get("knowledge_urls") or [])
+                    if u.get("url")
+                ]
+                site_behavior = (site.get("config") or {}).get("behavior") or {}
                 logger.info(f"Filtering by site: {site_url_filter}")
         
         try:
@@ -169,7 +177,12 @@ class RAGEngine:
                 history, qa_match, retrieved_docs = await asyncio.gather(
                     mongodb.get_conversation_history(session_id),
                     self._check_qa_match(rewritten_query, site_id),
-                    self._retrieve_documents(rewritten_query, site_url_filter=site_url_filter),
+                    self._retrieve_documents(
+                        rewritten_query,
+                        site_url_filter=site_url_filter,
+                        site_id=site_id,
+                        extra_url_prefixes=knowledge_urls,
+                    ),
                 )
             else:
                 history, qa_match = await asyncio.gather(
@@ -223,7 +236,12 @@ class RAGEngine:
             
             # 4. No Q&A match - use prefetched retrieval or fetch now
             if retrieved_docs is None:
-                retrieved_docs = await self._retrieve_documents(rewritten_query, site_url_filter=site_url_filter)
+                retrieved_docs = await self._retrieve_documents(
+                    rewritten_query,
+                    site_url_filter=site_url_filter,
+                    site_id=site_id,
+                    extra_url_prefixes=knowledge_urls,
+                )
             
             # 5. Grade documents for relevance
             relevant_docs = await self._grade_documents(rewritten_query, retrieved_docs)
@@ -237,7 +255,10 @@ class RAGEngine:
                 context=context,
                 history=history,
                 user_id=user_id,
-                site_name=site_name
+                site_name=site_name,
+                custom_prompt=site_behavior.get("system_prompt"),
+                temperature=site_behavior.get("temperature"),
+                max_tokens=site_behavior.get("max_tokens"),
             )
             
             # 8. Follow-up suggestions are disabled to avoid an extra LLM call.
@@ -285,30 +306,45 @@ class RAGEngine:
 
         site_url_filter = None
         site_name = None
+        knowledge_urls: List[str] = []
+        site_behavior: Dict = {}
         if site_id:
             site = await mongodb.db.sites.find_one({"site_id": site_id})
             if site:
                 site_url_filter = site.get("url", "").rstrip("/")
                 site_name = site.get("name") or site_url_filter.replace("https://", "").replace("http://", "")
+                knowledge_urls = [
+                    (u.get("url") or "").rstrip("/")
+                    for u in (site.get("knowledge_urls") or [])
+                    if u.get("url")
+                ]
+                site_behavior = (site.get("config") or {}).get("behavior") or {}
 
         try:
             rewritten_query = message
             history, retrieved_docs = await asyncio.gather(
                 mongodb.get_conversation_history(session_id),
-                self._retrieve_documents(rewritten_query, site_url_filter=site_url_filter),
+                self._retrieve_documents(
+                    rewritten_query,
+                    site_url_filter=site_url_filter,
+                    site_id=site_id,
+                    extra_url_prefixes=knowledge_urls,
+                ),
             )
             relevant_docs = await self._grade_documents(rewritten_query, retrieved_docs)
             context, sources = self._build_context(relevant_docs)
 
             prompt = self._build_prompt(message, context, history)
-            system_prompt = self._get_system_prompt(site_name)
+            system_prompt = self._get_system_prompt(
+                site_name, custom_prompt=site_behavior.get("system_prompt")
+            )
 
             full_response = ""
             async for chunk in self.ollama.generate_stream(
                 prompt,
                 system_prompt,
-                temperature=settings.LLM_TEMPERATURE,
-                max_tokens=settings.LLM_MAX_TOKENS,
+                temperature=site_behavior.get("temperature") or settings.LLM_TEMPERATURE,
+                max_tokens=site_behavior.get("max_tokens") or settings.LLM_MAX_TOKENS,
             ):
                 full_response += chunk
                 yield chunk
@@ -367,24 +403,30 @@ Rewritten search query (just the query, no explanation):"""
         self,
         query: str,
         k: int = None,
-        site_url_filter: str = None
+        site_url_filter: str = None,
+        site_id: str = None,
+        extra_url_prefixes: List[str] = None,
     ) -> List[Tuple[Document, float]]:
         """Retrieve relevant documents using hybrid search (runs in a thread pool so it can overlap I/O)."""
         k_val = k or settings.RETRIEVAL_K
         oversample = max(1, getattr(settings, "RAG_RETRIEVAL_OVERSAMPLE", 2))
         vs = self.vector_store
-        sf = site_url_filter
+        # URL prefixes that belong to this site: its own URL + extra knowledge URLs
+        prefixes = [p for p in ([site_url_filter] + list(extra_url_prefixes or [])) if p]
 
         def _sync_retrieve() -> List[Tuple[Document, float]]:
             results = vs.similarity_search_with_score(query, k=k_val * oversample)
-            if sf:
+            if prefixes or site_id:
                 filtered_results = []
                 for doc, score in results:
-                    doc_url = doc.metadata.get("url", "") or doc.metadata.get("source", "")
-                    if doc_url.startswith(sf):
+                    meta = doc.metadata or {}
+                    doc_url = meta.get("url", "") or meta.get("source", "")
+                    if (site_id and meta.get("site_id") == site_id) or any(
+                        doc_url.startswith(p) for p in prefixes
+                    ):
                         filtered_results.append((doc, score))
                 results = filtered_results
-                logger.info(f"Filtered to {len(results)} docs for site: {sf}")
+                logger.info(f"Filtered to {len(results)} docs for site: {site_id or prefixes}")
             results.sort(key=lambda x: x[1])
             return results[:k_val]
 
@@ -449,8 +491,14 @@ Rewritten search query (just the query, no explanation):"""
         context = "\n\n---\n\n".join(context_parts)
         return context, sources
     
-    def _get_system_prompt(self, site_name: str = None) -> str:
-        """Get the system prompt for the chatbot (kept compact for lower latency)."""
+    # Matches the SiteBehaviorConfig.system_prompt schema default — a stored
+    # value equal to it means the site never customised its prompt.
+    _PLACEHOLDER_PROMPT = "You are a helpful assistant. Answer questions based on the provided context."
+
+    def _get_system_prompt(self, site_name: str = None, custom_prompt: str = None) -> str:
+        """System prompt: site-configured prompt wins, else the built-in default."""
+        if custom_prompt and custom_prompt.strip() and custom_prompt.strip() != self._PLACEHOLDER_PROMPT:
+            return custom_prompt.strip()
         site_desc = site_name if site_name else "this website"
         return (
             f"You are a helpful assistant for {site_desc}. "
@@ -494,24 +542,27 @@ Answer the user's question naturally and conversationally. Be brief by default; 
         context: str,
         history: List[Dict],
         user_id: str = None,
-        site_name: str = None
+        site_name: str = None,
+        custom_prompt: str = None,
+        temperature: float = None,
+        max_tokens: int = None,
     ) -> str:
         """Generate the response using the LLM."""
         prompt = self._build_prompt(question, context, history)
-        system_prompt = self._get_system_prompt(site_name)
-        
+        system_prompt = self._get_system_prompt(site_name, custom_prompt=custom_prompt)
+
         # Add user-specific context if available
         if user_id:
             mongodb = await get_mongodb()
             user_memory = await mongodb.get_user_memory(user_id)
             if user_memory:
                 system_prompt += f"\n\nUser preferences: {user_memory}"
-        
+
         response = await self.ollama.generate(
             prompt,
             system_prompt,
-            temperature=settings.LLM_TEMPERATURE,
-            max_tokens=settings.LLM_MAX_TOKENS,
+            temperature=temperature if temperature is not None else settings.LLM_TEMPERATURE,
+            max_tokens=max_tokens or settings.LLM_MAX_TOKENS,
         )
         return response.strip()
     

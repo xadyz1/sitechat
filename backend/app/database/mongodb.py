@@ -1320,6 +1320,13 @@ class MongoDB:
         )
         return result.modified_count > 0
     
+    async def has_assigned_agents(self, site_id: str) -> bool:
+        """Return True when at least one human agent is assigned to the site."""
+        count = await self.db.users.count_documents(
+            {"role": "agent", "assigned_site_ids": site_id}
+        )
+        return count > 0
+
     async def check_business_hours(self, site_id: str) -> Dict:
         """Check if site is within business hours."""
         from datetime import timedelta
@@ -1630,6 +1637,25 @@ class MongoDB:
         )
         
         return await self.get_platform_whitelabel()
+
+    async def get_landing_config(self) -> Optional[Dict]:
+        """Get landing page config (ad slots, booking embed)."""
+        config = await self.db.platform_settings.find_one({"type": "landing"})
+        if config:
+            config.pop("_id", None)
+            config.pop("type", None)
+        return config
+
+    async def update_landing_config(self, config: Dict) -> Dict:
+        """Update landing page config."""
+        config["type"] = "landing"
+        config["updated_at"] = datetime.utcnow()
+        await self.db.platform_settings.update_one(
+            {"type": "landing"},
+            {"$set": config},
+            upsert=True
+        )
+        return await self.get_landing_config()
 
     # ==================== Q&A Training Methods ====================
 

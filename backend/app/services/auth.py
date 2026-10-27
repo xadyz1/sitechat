@@ -46,6 +46,7 @@ class UserLogin(BaseModel):
 
 class ProfileUpdate(BaseModel):
     name: Optional[str] = None
+    avatar_url: Optional[str] = None
     current_password: Optional[str] = None
     new_password: Optional[str] = None
 
@@ -142,6 +143,9 @@ class UserResponse(BaseModel):
     created_at: datetime
     assigned_site_ids: List[str] = []
     must_change_password: bool = False
+    avatar_url: Optional[str] = None
+    plan: Optional[str] = None
+    is_master: bool = False
 
 
 class TokenResponse(BaseModel):
@@ -249,6 +253,9 @@ class AuthService:
 
         if data.name:
             updates["name"] = data.name
+
+        if data.avatar_url is not None:
+            updates["avatar_url"] = data.avatar_url.strip() or None
 
         if data.new_password:
             if user.get("must_change_password"):
@@ -456,6 +463,10 @@ class AuthService:
 
 
 def user_to_response(user: dict) -> UserResponse:
+    from app.config import settings
+
+    master_email = (settings.MASTER_ADMIN_EMAIL or "").strip().lower()
+    is_master = bool(master_email) and (user.get("email") or "").lower() == master_email
     return UserResponse(
         id=str(user["_id"]),
         email=user["email"],
@@ -464,4 +475,7 @@ def user_to_response(user: dict) -> UserResponse:
         created_at=user["created_at"],
         assigned_site_ids=list(user.get("assigned_site_ids") or []),
         must_change_password=bool(user.get("must_change_password")),
+        avatar_url=user.get("avatar_url"),
+        plan=user.get("plan"),
+        is_master=is_master,
     )

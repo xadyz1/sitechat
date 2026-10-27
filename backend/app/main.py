@@ -1,5 +1,5 @@
 """
-SiteChat - FastAPI Application
+SwiftChat - FastAPI Application
 
 A production-ready RAG chatbot platform with configurable providers.
 
@@ -12,11 +12,11 @@ Provider Architecture:
 - Cache: Memory (extensible to Redis)
 """
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from typing import Optional
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -33,6 +33,7 @@ from app.core.security import (
     log_security_warnings,
     get_client_ip
 )
+from app.core.custom_domain import CustomDomainMiddleware
 from app.routes import chat_router, crawl_router, admin_router, analytics_router, conversations_router, triggers_router, handoff_router, platform_router
 from app.routes.embed import router as embed_router, get_widget_sri_hash
 from app.public_html import apply_public_html_placeholders
@@ -42,6 +43,9 @@ from app.routes.documents import router as documents_router
 from app.routes.schedule import router as schedule_router
 from app.routes.qa import router as qa_router
 from app.routes.leads import router as leads_router
+from app.routes.helpcenter import router as helpcenter_router
+from app.routes.notifications import router as notifications_router
+from app.routes.portal import router as portal_router
 from app.services.auth import AuthService
 from app.services.scheduler import get_scheduler
 
@@ -158,7 +162,10 @@ if settings.is_production and settings.TRUSTED_HOSTS != "*":
         allowed_hosts=settings.trusted_hosts_list
     )
 
-# 4. CORS middleware - using configurable origins
+# 4. Custom help-center domains — rewrite portal paths by Host header
+app.add_middleware(CustomDomainMiddleware)
+
+# 5. CORS middleware - using configurable origins
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
@@ -185,6 +192,9 @@ app.include_router(documents_router)
 app.include_router(schedule_router)
 app.include_router(qa_router)
 app.include_router(leads_router)
+app.include_router(helpcenter_router)
+app.include_router(notifications_router)
+app.include_router(portal_router)
 
 # Serve static files (frontend)
 # Get the absolute path to the frontend directory
@@ -213,6 +223,39 @@ if os.path.exists(frontend_path):
         app.mount("/js", StaticFiles(directory=js_path), name="js")
     if os.path.exists(widget_path):
         app.mount("/widget", StaticFiles(directory=widget_path), name="widget")
+
+    icons_path = os.path.join(frontend_path, "icons")
+    if os.path.exists(icons_path):
+        app.mount("/icons", StaticFiles(directory=icons_path), name="icons")
+
+
+@app.get("/manifest.webmanifest")
+async def web_manifest():
+    """Serve the PWA manifest (must be at site root for installability)."""
+    path = os.path.join(frontend_path, "manifest.webmanifest")
+    if os.path.exists(path):
+        return FileResponse(path, media_type="application/manifest+json")
+    return {"error": "Manifest not found"}
+
+
+@app.get("/OneSignalSDKWorker.js")
+async def onesignal_worker():
+    """OneSignal service worker (required at root scope for web push)."""
+    path = os.path.join(frontend_path, "OneSignalSDKWorker.js")
+    if os.path.exists(path):
+        return FileResponse(path, media_type="application/javascript",
+                            headers={"Service-Worker-Allowed": "/"})
+    raise HTTPException(status_code=404, detail="OneSignal worker not found")
+
+
+@app.get("/sw.js")
+async def service_worker():
+    """Serve the service worker from site root so it can control all pages."""
+    path = os.path.join(frontend_path, "sw.js")
+    if os.path.exists(path):
+        return FileResponse(path, media_type="application/javascript",
+                            headers={"Service-Worker-Allowed": "/"})
+    return {"error": "Service worker not found"}
 
 
 @app.get("/")
@@ -270,6 +313,46 @@ async def login_page():
     if os.path.exists(login_path):
         return _html_file_response("login.html")
     return {"error": "Login page not found"}
+
+
+def _static_page(filename: str):
+    path = os.path.join(frontend_path, filename)
+    if os.path.exists(path):
+        return _html_file_response(filename)
+    raise HTTPException(status_code=404, detail="Page not found")
+
+
+@app.get("/privacy")
+async def privacy_page():
+    """Privacy Policy (generic legal page)."""
+    return _static_page("privacy.html")
+
+
+@app.get("/terms")
+async def terms_page():
+    """Terms of Service (generic legal page)."""
+    return _static_page("terms.html")
+
+
+@app.get("/security")
+async def security_page():
+    """Data Security statement (generic legal page)."""
+    return _static_page("security.html")
+
+
+@app.exception_handler(404)
+async def not_found_handler(request, exc):
+    """Branded 404 page for unknown non-API paths; JSON for API calls."""
+    accept = request.headers.get("accept", "")
+    path = request.url.path
+    if path.startswith("/api") or "application/json" in accept:
+        return JSONResponse(status_code=404, content={"detail": getattr(exc, "detail", "Not found")})
+    notfound = os.path.join(frontend_path, "404.html")
+    if os.path.exists(notfound):
+        with open(notfound, "r", encoding="utf-8") as f:
+            body = apply_public_html_placeholders(f.read())
+        return HTMLResponse(content=body, status_code=404, media_type="text/html; charset=utf-8")
+    return JSONResponse(status_code=404, content={"detail": "Not found"})
 
 
 @app.get("/api")

@@ -66,12 +66,13 @@ function formatApiErrorDetail(data) {
 }
 
 function syncBodyRoleClasses() {
-    document.body.classList.remove('is-admin', 'is-user', 'is-agent');
+    document.body.classList.remove('is-admin', 'is-user', 'is-agent', 'is-master');
     if (!currentUser?.role) return;
     const r = String(currentUser.role).toLowerCase();
     if (r === 'admin') document.body.classList.add('is-admin');
     else if (r === 'user') document.body.classList.add('is-user');
     else if (r === 'agent') document.body.classList.add('is-agent');
+    if (currentUser.is_master) document.body.classList.add('is-master');
 }
 
 /** Prefer getAttribute — dataset.view can be unreliable for data-view in some browsers. */
@@ -111,6 +112,7 @@ async function refreshCurrentUserFromServer() {
             created_at: data.created_at,
             assigned_site_ids: data.assigned_site_ids || [],
             must_change_password: !!data.must_change_password,
+            avatar_url: data.avatar_url || null,
         };
         localStorage.setItem('user', JSON.stringify(currentUser));
         syncBodyRoleClasses();
@@ -258,17 +260,31 @@ function getAuthHeaders() {
     };
 }
 
+function setUserAvatarEl(el) {
+    if (!el) return;
+    const initial = currentUser.name ? currentUser.name.charAt(0).toUpperCase() : 'U';
+    el.textContent = initial;
+    if (currentUser.avatar_url) {
+        const img = document.createElement('img');
+        img.src = currentUser.avatar_url;
+        img.alt = '';
+        img.onload = () => { el.style.color = 'transparent'; };
+        img.onerror = () => { img.remove(); el.style.color = ''; };
+        el.appendChild(img);
+    } else {
+        el.style.color = '';
+    }
+}
+
 function updateUserUI() {
     if (!currentUser) return;
 
-    const initial = currentUser.name ? currentUser.name.charAt(0).toUpperCase() : 'U';
-    elements.userAvatar.textContent = initial;
+    setUserAvatarEl(elements.userAvatar);
     elements.userName.textContent = currentUser.name || currentUser.email;
     const roleLabels = { admin: 'Admin', agent: 'Support agent', user: 'User' };
     elements.userRole.textContent = roleLabels[currentUser.role] || currentUser.role;
 
-    const mobileAvatar = document.getElementById('mobile-user-avatar');
-    if (mobileAvatar) mobileAvatar.textContent = initial;
+    setUserAvatarEl(document.getElementById('mobile-user-avatar'));
 }
 
 function logout() {
@@ -377,6 +393,8 @@ function switchView(viewId) {
         initHandoffsView();
     } else if (viewId === 'team') {
         initTeamView();
+    } else if (viewId === 'platform') {
+        initPlatformView();
     }
 }
 
@@ -1072,19 +1090,22 @@ function pollSiteStatus(siteId) {
 let currentDetailSite = null;
 
 const VALID_DETAIL_TABS = [
-    'appearance', 'embed', 'behavior', 'quick-prompts', 'triggers', 'training',
-    'handoff', 'leads', 'security', 'crawling'
+    'appearance', 'embed', 'visibility', 'behavior', 'quick-prompts', 'triggers', 'training',
+    'help-center', 'handoff', 'leads', 'notifications', 'security', 'crawling'
 ];
 
 const DETAIL_TAB_LABELS = {
     appearance: 'Appearance',
     embed: 'Embed',
+    visibility: 'Visibility',
     behavior: 'Behavior',
     'quick-prompts': 'Quick Prompts',
     triggers: 'Triggers',
     training: 'Training',
+    'help-center': 'Help Center',
     handoff: 'Handoff',
     leads: 'Leads',
+    notifications: 'Notifications',
     security: 'Security',
     crawling: 'Crawling'
 };
@@ -1273,6 +1294,7 @@ function initSidebarCollapse() {
 }
 
 async function openSiteDetails(site) {
+    destroyLivePreviewWidget();
     currentDetailSite = site;
 
     // Mobile: switch to full-screen detail mode
@@ -1373,6 +1395,7 @@ function switchToDetailTab(tabId) {
 function loadDetailTabContent(tabId) {
     const tabContentContainer = document.getElementById('detail-tab-content');
     if (!tabContentContainer) return;
+    if (tabId !== 'appearance') destroyLivePreviewWidget();
     
     let content = '';
     
@@ -1392,6 +1415,9 @@ function loadDetailTabContent(tabId) {
         case 'training':
             renderTrainingTab();
             return;
+        case 'help-center':
+            content = getHelpCenterTabContent();
+            break;
         case 'handoff':
             content = getHandoffTabContent();
             break;
@@ -1404,8 +1430,14 @@ function loadDetailTabContent(tabId) {
         case 'embed':
             content = getEmbedTabContent();
             break;
+        case 'visibility':
+            content = getVisibilityTabContent();
+            break;
         case 'leads':
             content = getLeadsTabContent();
+            break;
+        case 'notifications':
+            content = getNotificationsTabContent();
             break;
         default:
             content = '<p>Tab content not available</p>';
@@ -1422,12 +1454,21 @@ function initTabHandlers(tabId) {
             initAppearanceHandlers();
             loadSecureEmbedCode();
             break;
+        case 'behavior':
+            initBehaviorHandlers();
+            break;
         case 'quick-prompts':
             initQuickPromptsHandlers();
             loadQuickPrompts();
             break;
         case 'triggers':
             loadTriggers();
+            break;
+        case 'help-center':
+            initHelpCenterHandlers();
+            loadHelpCenterStatus();
+            loadHelpCenterContent();
+            loadHcDomainStatus();
             break;
         case 'handoff':
             loadHandoffConfig();
@@ -1441,138 +1482,479 @@ function initTabHandlers(tabId) {
         case 'embed':
             loadSecureEmbedCode();
             break;
+        case 'visibility':
+            initVisibilityHandlers();
+            break;
         case 'leads':
             initLeadsHandlers();
             loadLeads();
             break;
+        case 'notifications':
+            initNotificationsHandlers();
+            loadNotificationsConfig();
+            break;
     }
+}
+
+const LAUNCHER_ICONS = {
+    chat_bubble: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
+    chat_bubble_dots: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/><circle cx="8.5" cy="11.5" r="1" fill="currentColor"/><circle cx="12" cy="11.5" r="1" fill="currentColor"/><circle cx="15.5" cy="11.5" r="1" fill="currentColor"/></svg>',
+    headset: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 14v-3a9 9 0 0 1 18 0v3"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>',
+    question: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+    lightning: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
+    envelope: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 5L2 7"/></svg>',
+    smile: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>',
+    heart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>',
+    bell: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>',
+    star: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>',
+    gem: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="6 3 18 3 22 9 12 22 2 9"/><path d="M2 9h20M9 3l3 6 3-6M12 9l0 13"/></svg>'
+};
+const DEFAULT_LAUNCHER_SVG = LAUNCHER_ICONS.chat_bubble;
+
+const SOUND_OPTIONS = [
+    'none', 'bell', 'bell2', 'bright', 'bright2', 'bubble', 'bubble2', 'click', 'click2',
+    'digital', 'fantasy', 'glass', 'liquid', 'notes', 'plucky', 'soft', 'soft2'
+];
+const SOUND_LABELS = {
+    none: 'None', bell: 'Bell', bell2: 'Bell 2', bright: 'Bright', bright2: 'Bright 2',
+    bubble: 'Bubble', bubble2: 'Bubble 2', click: 'Click', click2: 'Click 2',
+    digital: 'Digital', fantasy: 'Fantasy', glass: 'Glass', liquid: 'Liquid',
+    notes: 'Notes', plucky: 'Plucky', soft: 'Soft', soft2: 'Soft 2'
+};
+const SOUND_PRESETS_DASH = {
+    bell:    [{ f: 880, t: 0, d: 0.35, w: 'sine' }, { f: 660, t: 0.12, d: 0.4, w: 'sine' }],
+    bell2:   [{ f: 1046, t: 0, d: 0.3, w: 'sine' }, { f: 784, t: 0.15, d: 0.35, w: 'sine' }],
+    bright:  [{ f: 523, t: 0, d: 0.15, w: 'triangle' }, { f: 659, t: 0.08, d: 0.15, w: 'triangle' }, { f: 784, t: 0.16, d: 0.3, w: 'triangle' }],
+    bright2: [{ f: 659, t: 0, d: 0.12, w: 'triangle' }, { f: 880, t: 0.07, d: 0.12, w: 'triangle' }, { f: 1174, t: 0.14, d: 0.28, w: 'triangle' }],
+    bubble:  [{ f: 600, t: 0, d: 0.08, w: 'sine', sweep: 900 }, { f: 900, t: 0.09, d: 0.12, w: 'sine', sweep: 500 }],
+    bubble2: [{ f: 500, t: 0, d: 0.07, w: 'sine', sweep: 800 }, { f: 700, t: 0.08, d: 0.07, w: 'sine', sweep: 1000 }, { f: 900, t: 0.16, d: 0.1, w: 'sine', sweep: 600 }],
+    click:   [{ f: 1200, t: 0, d: 0.05, w: 'square', vol: 0.12 }],
+    click2:  [{ f: 1000, t: 0, d: 0.04, w: 'square', vol: 0.12 }, { f: 1400, t: 0.07, d: 0.05, w: 'square', vol: 0.12 }],
+    digital: [{ f: 440, t: 0, d: 0.07, w: 'square', vol: 0.1 }, { f: 554, t: 0.08, d: 0.07, w: 'square', vol: 0.1 }, { f: 659, t: 0.16, d: 0.1, w: 'square', vol: 0.1 }],
+    fantasy: [{ f: 523, t: 0, d: 0.4, w: 'sine' }, { f: 659, t: 0.05, d: 0.4, w: 'sine' }, { f: 784, t: 0.1, d: 0.4, w: 'sine' }, { f: 1046, t: 0.15, d: 0.45, w: 'sine' }],
+    glass:   [{ f: 1568, t: 0, d: 0.5, w: 'sine', vol: 0.15 }, { f: 2093, t: 0.02, d: 0.4, w: 'sine', vol: 0.08 }],
+    liquid:  [{ f: 300, t: 0, d: 0.15, w: 'sine', sweep: 220 }, { f: 400, t: 0.1, d: 0.2, w: 'sine', sweep: 320 }],
+    notes:   [{ f: 587, t: 0, d: 0.25, w: 'sine' }, { f: 880, t: 0.15, d: 0.3, w: 'sine' }],
+    plucky:  [{ f: 660, t: 0, d: 0.09, w: 'triangle', vol: 0.3 }, { f: 990, t: 0.06, d: 0.1, w: 'triangle', vol: 0.2 }],
+    soft:    [{ f: 440, t: 0, d: 0.35, w: 'sine', vol: 0.12, attack: 0.08 }],
+    soft2:   [{ f: 392, t: 0, d: 0.3, w: 'sine', vol: 0.1, attack: 0.08 }, { f: 523, t: 0.12, d: 0.35, w: 'sine', vol: 0.1, attack: 0.08 }]
+};
+let previewAudioCtx = null;
+function previewSound(name) {
+    const notes = SOUND_PRESETS_DASH[name];
+    if (!notes) return;
+    try {
+        if (!previewAudioCtx) previewAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (previewAudioCtx.state === 'suspended') previewAudioCtx.resume();
+        const t0 = previewAudioCtx.currentTime;
+        notes.forEach(n => {
+            const osc = previewAudioCtx.createOscillator();
+            const gain = previewAudioCtx.createGain();
+            osc.type = n.w || 'sine';
+            osc.frequency.setValueAtTime(n.f, t0 + n.t);
+            if (n.sweep) osc.frequency.exponentialRampToValueAtTime(n.sweep, t0 + n.t + n.d);
+            const vol = n.vol != null ? n.vol : 0.2;
+            const attack = n.attack || 0.01;
+            gain.gain.setValueAtTime(0, t0 + n.t);
+            gain.gain.linearRampToValueAtTime(vol, t0 + n.t + attack);
+            gain.gain.exponentialRampToValueAtTime(0.0001, t0 + n.t + n.d);
+            osc.connect(gain);
+            gain.connect(previewAudioCtx.destination);
+            osc.start(t0 + n.t);
+            osc.stop(t0 + n.t + n.d + 0.05);
+        });
+    } catch (e) {}
+}
+
+function launcherIconPreview(icon) {
+    if (!icon) return DEFAULT_LAUNCHER_SVG;
+    if (LAUNCHER_ICONS[icon]) return LAUNCHER_ICONS[icon];
+    if (icon.startsWith('data:') || icon.startsWith('http')) return `<img src="${escapeHtml(icon)}" alt="">`;
+    return DEFAULT_LAUNCHER_SVG;
+}
+
+const WIDGET_THEMES = [
+    { value: 'light', label: 'Light' },
+    { value: 'light_accent', label: 'Light Accent' },
+    { value: 'light_soft', label: 'Light Soft' },
+    { value: 'pattern_light', label: 'Pattern Light' },
+    { value: 'pattern_accent', label: 'Pattern Accent' },
+    { value: 'dark', label: 'Dark' }
+];
+
+function themePaletteDash(primary, theme) {
+    const light = {
+        headerBg: '#FFFFFF', headerText: '#1E293B', chatBg: '#F1F5F9',
+        botBg: '#FFFFFF', botColor: '#1E293B', userColor: '#FFFFFF',
+        inputBg: '#FFFFFF', inputText: '#374151', muted: '#64748B', pattern: false
+    };
+    const palettes = {
+        light: light,
+        light_accent: Object.assign({}, light, { headerBg: primary, headerText: '#FFFFFF' }),
+        light_soft: Object.assign({}, light, { chatBg: '#FFFFFF', botBg: '#F1F5F9' }),
+        pattern_light: Object.assign({}, light, { pattern: true }),
+        pattern_accent: Object.assign({}, light, { headerBg: primary, headerText: '#FFFFFF', pattern: true }),
+        dark: {
+            headerBg: '#111827', headerText: '#F9FAFB', chatBg: '#0B1220',
+            botBg: '#1F2937', botColor: '#E5E7EB', userColor: '#FFFFFF',
+            inputBg: '#1F2937', inputText: '#E5E7EB', muted: '#9CA3AF', pattern: false
+        }
+    };
+    return palettes[theme] || light;
+}
+
+function themeCardPreview(theme, primary, selected) {
+    const p = themePaletteDash(primary, theme);
+    return `<div class="theme-card-preview" style="background:${p.chatBg}${p.pattern ? `;background-image:url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40'%3E%3Cg fill='none' stroke='%2394a3b8' stroke-opacity='0.25' stroke-width='1'%3E%3Cpath d='M8 8h10v7H8z'/%3E%3Cpath d='M26 24h10v7H26z'/%3E%3C/g%3E%3C/svg%3E&quot;)` : ''}">
+        <div class="theme-card-header" style="background:${p.headerBg}"></div>
+        <div class="theme-card-bubbles">
+            <span class="theme-card-bubble" style="background:${p.botBg}"></span>
+            <span class="theme-card-bubble user" style="background:${primary}"></span>
+        </div>
+    </div>`;
 }
 
 function getAppearanceTabContent() {
     const config = currentSiteConfig || {};
-    const appearance = config.appearance || {};
-    const primaryColor = appearance.primary_color || '#0D9488';
-    const chatTitle = appearance.chat_title || 'Chat with us';
-    const welcomeMsg = appearance.welcome_message || 'Hi! How can I help you today?';
-    
+    const a = config.appearance || {};
+    const primaryColor = a.primary_color || '#7B3DFB';
+    const chatTitle = a.chat_title || 'Chat with us';
+    const welcomeMsg = a.welcome_message || 'Hi! How can I help you today?';
+
+    const colorField = (id, label, value, auto) => {
+        const effective = value || auto || primaryColor;
+        return `
+            <div class="form-group">
+                <label for="${id}">${label}</label>
+                <div class="color-input-wrapper">
+                    <input type="color" id="${id}" value="${effective}" class="color-input" data-auto-value="${auto || ''}">
+                    <input type="text" id="${id}-text" value="${value || ''}" placeholder="${auto ? 'Auto (' + auto + ')' : '#RRGGBB'}" class="color-text-input">
+                    ${auto ? `<button type="button" class="color-reset-btn" data-target="${id}" title="Reset to auto">↺</button>` : ''}
+                </div>
+            </div>`;
+    };
+
+    const launcherStyles = [
+        { value: 'button', label: 'Button', icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M8.5 10.5h7v5h-4l-3 3v-8z"/></svg>' },
+        { value: 'text_button', label: 'Text Button', icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="8" width="20" height="8" rx="4"/><path d="M6 12h6"/></svg>' },
+        { value: 'agent_profile', label: 'Agent Profile', icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/></svg>' },
+        { value: 'quick_input', label: 'Quick Input', icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="8" width="20" height="8" rx="4"/><path d="M18 9.5l-3 3M18 12.5h-4"/></svg>' },
+    ];
+    const launcherStyle = a.launcher_style || 'button';
+    const fonts = ['Inter', 'Roboto', 'Open Sans', 'Lato', 'Montserrat', 'Poppins', 'System'];
+    const pal = themePaletteDash(primaryColor, a.theme || 'light_accent');
+
     return `
         <div class="appearance-layout">
-            <div class="tab-form">
-                <div class="form-group">
-                    <label for="config-color">Primary Color</label>
-                    <div class="color-input-wrapper">
-                        <input type="color" id="config-color" value="${primaryColor}" class="color-input">
-                        <input type="text" id="config-color-text" value="${primaryColor}" class="color-text-input">
+            <div class="tab-form" id="appearance-form">
+                <details class="config-section" open>
+                    <summary class="config-section-title">AI Agent Profile</summary>
+                    <div class="config-section-body">
+                        <div class="form-group">
+                            <label for="config-title">Display Name</label>
+                            <input type="text" id="config-title" placeholder="Chat with us" value="${escapeHtml(a.chat_title || '')}" class="form-input">
+                        </div>
+                        <div class="form-group">
+                            <label for="config-agent-caption">Caption</label>
+                            <input type="text" id="config-agent-caption" placeholder="Powered by AI" value="${escapeHtml(a.agent_caption || '')}" class="form-input">
+                            <small class="form-help">Status line under the name, e.g. "Online" or "Disponível"</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="config-avatar-url">Profile Picture URL</label>
+                            <div class="avatar-input-row">
+                                <input type="url" id="config-avatar-url" placeholder="https://example.com/avatar.png" value="${escapeHtml(a.bot_avatar_url || '')}" class="form-input">
+                                <div class="avatar-preview" id="avatar-preview">${a.bot_avatar_url ? `<img src="${escapeHtml(a.bot_avatar_url)}" alt="">` : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>'}</div>
+                            </div>
+                        </div>
+                        <div class="form-group form-checkbox">
+                            <input type="checkbox" id="config-show-online" ${a.show_online_indicator !== false ? 'checked' : ''}>
+                            <label for="config-show-online">Show Online Indicator</label>
+                        </div>
+                        <div class="form-group">
+                            <label for="config-welcome">Welcome Message</label>
+                            <textarea id="config-welcome" placeholder="Hi! How can I help you today?" class="form-textarea" rows="2">${escapeHtml(a.welcome_message || '')}</textarea>
+                        </div>
                     </div>
-                </div>
-                
-                <div class="form-group">
-                    <label for="config-title">Chat Title</label>
-                    <input type="text" id="config-title" placeholder="Chat with us" value="${appearance.chat_title || ''}" class="form-input">
-                </div>
-                
-                <div class="form-group">
-                    <label for="config-welcome">Welcome Message</label>
-                    <textarea id="config-welcome" placeholder="Hi! How can I help you today?" class="form-textarea" rows="2">${appearance.welcome_message || ''}</textarea>
-                </div>
-                
-                <div class="form-group">
-                    <label for="config-position">Widget Position</label>
-                    <select id="config-position" class="form-select">
-                        <option value="bottom-right" ${appearance.position === 'bottom-right' ? 'selected' : ''}>Bottom Right</option>
-                        <option value="bottom-left" ${appearance.position === 'bottom-left' ? 'selected' : ''}>Bottom Left</option>
-                    </select>
-                </div>
-                
-                <div class="form-divider"></div>
-                <h4 class="form-section-title">Widget branding</h4>
+                </details>
 
-                <div class="form-group form-checkbox">
-                    <input type="checkbox" id="config-hide-branding" ${appearance.hide_branding ? 'checked' : ''}>
-                    <label for="config-hide-branding">Customize widget branding</label>
-                </div>
-                
-                <div class="form-group" id="custom-branding-group" style="${appearance.hide_branding ? '' : 'display:none'}">
-                    <label for="config-custom-branding">Your Branding Text</label>
-                    <input type="text" id="config-custom-branding" placeholder="Powered by Your Company" value="${appearance.custom_branding_text || ''}" class="form-input">
-                    <small class="form-help">Leave empty to hide branding completely</small>
-                </div>
-                
-                <div class="form-group" style="${appearance.hide_branding ? '' : 'display:none'}">
-                    <label for="config-custom-branding-url">Branding Link URL (optional)</label>
-                    <input type="url" id="config-custom-branding-url" placeholder="https://yourcompany.com" value="${appearance.custom_branding_url || ''}" class="form-input">
-                </div>
-                
+                <details class="config-section" open>
+                    <summary class="config-section-title">Theme</summary>
+                    <div class="config-section-body">
+                        <div class="theme-grid">
+                            ${WIDGET_THEMES.map(t => `
+                                <label class="theme-card ${(a.theme || 'light_accent') === t.value ? 'selected' : ''}">
+                                    <input type="radio" name="widget-theme" value="${t.value}" ${(a.theme || 'light_accent') === t.value ? 'checked' : ''} hidden>
+                                    ${themeCardPreview(t.value, primaryColor)}
+                                    <span class="theme-card-name">${t.label}</span>
+                                </label>`).join('')}
+                        </div>
+                        <div class="form-group">
+                            <label for="config-border-radius">Border Radius <span class="range-value" id="border-radius-val">${a.border_radius ?? 16}px</span></label>
+                            <input type="range" id="config-border-radius" min="0" max="28" value="${a.border_radius ?? 16}" class="form-range">
+                            <small class="form-help">Applies to the window, message bubbles and input field</small>
+                        </div>
+                        <small class="form-help">Theme sets defaults for header, chat background, messages, input and footer. Customize individual colors below — empty fields use the theme value.</small>
+                    </div>
+                </details>
+
+                <details class="config-section" open>
+                    <summary class="config-section-title">Placement &amp; Layout</summary>
+                    <div class="config-section-body">
+                        <div class="form-group">
+                            <label>Launcher Button</label>
+                            <div class="launcher-style-grid">
+                                ${launcherStyles.map(s => `
+                                    <label class="launcher-style-option ${launcherStyle === s.value ? 'selected' : ''}">
+                                        <input type="radio" name="launcher-style" value="${s.value}" ${launcherStyle === s.value ? 'checked' : ''} hidden>
+                                        <span class="launcher-style-icon">${s.icon}</span>
+                                        <span class="launcher-style-name">${s.label}</span>
+                                    </label>`).join('')}
+                            </div>
+                        </div>
+                        <div class="form-group" id="launcher-text-group" style="${['text_button', 'quick_input'].includes(launcherStyle) ? '' : 'display:none'}">
+                            <label for="config-launcher-text">Launcher Text</label>
+                            <input type="text" id="config-launcher-text" placeholder="Ask us anything" value="${escapeHtml(a.launcher_text || '')}" class="form-input">
+                        </div>
+                        <div class="form-group">
+                            <label>Launcher Icon</label>
+                            <div class="launcher-icon-row">
+                                <div class="launcher-icon-preview" id="launcher-icon-preview">${launcherIconPreview(a.launcher_icon)}</div>
+                                <div class="launcher-icon-actions">
+                                    <button type="button" class="btn btn-secondary btn-sm" id="launcher-icon-library-btn">Choose from Library</button>
+                                    <button type="button" class="btn btn-secondary btn-sm" id="launcher-icon-upload-btn">Upload</button>
+                                    <button type="button" class="btn btn-secondary btn-sm" id="launcher-icon-remove-btn" ${a.launcher_icon ? '' : 'disabled'}>Remove</button>
+                                </div>
+                                <input type="file" id="launcher-icon-file" accept="image/*" hidden>
+                                <input type="hidden" id="config-launcher-icon" value="${escapeHtml(a.launcher_icon || '')}">
+                            </div>
+                            <div class="launcher-icon-library" id="launcher-icon-library" style="display:none"></div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="config-position">Position</label>
+                                <select id="config-position" class="form-select">
+                                    <option value="bottom-right" ${(a.position || 'bottom-right') === 'bottom-right' ? 'selected' : ''}>Bottom Right</option>
+                                    <option value="bottom-center" ${a.position === 'bottom-center' ? 'selected' : ''}>Bottom Center</option>
+                                    <option value="bottom-left" ${a.position === 'bottom-left' ? 'selected' : ''}>Bottom Left</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="config-offset-y">Vertical Offset <span class="range-value" id="offset-y-val">${a.offset_y ?? 24}px</span></label>
+                                <input type="range" id="config-offset-y" min="0" max="200" value="${a.offset_y ?? 24}" class="form-range">
+                            </div>
+                            <div class="form-group">
+                                <label for="config-offset-x">Horizontal Offset <span class="range-value" id="offset-x-val">${a.offset_x ?? 24}px</span></label>
+                                <input type="range" id="config-offset-x" min="0" max="200" value="${a.offset_x ?? 24}" class="form-range">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="config-window-width">Window Width (px)</label>
+                                <input type="number" id="config-window-width" min="280" max="640" value="${a.window_width || 400}" class="form-input">
+                            </div>
+                            <div class="form-group">
+                                <label for="config-window-height">Window Height (px)</label>
+                                <input type="number" id="config-window-height" min="320" max="860" value="${a.window_height || 560}" class="form-input">
+                            </div>
+                        </div>
+                        <div class="form-group form-checkbox">
+                            <input type="checkbox" id="config-movable-window" ${a.movable_window ? 'checked' : ''}>
+                            <label for="config-movable-window">Move &amp; resize window — visitors can drag and resize the chat window (desktop)</label>
+                        </div>
+                    </div>
+                </details>
+
+                <details class="config-section">
+                    <summary class="config-section-title">Start Mode</summary>
+                    <div class="config-section-body">
+                        <div class="start-mode-options">
+                            <label class="start-mode-option ${(a.start_mode || 'button_only') === 'button_only' ? 'selected' : ''}">
+                                <input type="radio" name="start-mode" value="button_only" ${(a.start_mode || 'button_only') === 'button_only' ? 'checked' : ''}>
+                                <span class="start-mode-name">Button Only</span>
+                                <span class="start-mode-desc">Visitors open the chat manually.</span>
+                            </label>
+                            <label class="start-mode-option ${a.start_mode === 'greeting' ? 'selected' : ''}">
+                                <input type="radio" name="start-mode" value="greeting" ${a.start_mode === 'greeting' ? 'checked' : ''}>
+                                <span class="start-mode-name">Greeting &amp; Suggested Questions</span>
+                                <span class="start-mode-desc">Shows a greeting and suggested questions above the launcher button.</span>
+                            </label>
+                            <label class="start-mode-option ${a.start_mode === 'auto_open' ? 'selected' : ''}">
+                                <input type="radio" name="start-mode" value="auto_open" ${a.start_mode === 'auto_open' ? 'checked' : ''}>
+                                <span class="start-mode-name">Open Chat Automatically</span>
+                                <span class="start-mode-desc">The chat opens automatically for visitors on desktop devices only.</span>
+                            </label>
+                        </div>
+                        <div class="form-group" id="greeting-message-group" style="${a.start_mode === 'greeting' ? '' : 'display:none'}">
+                            <label for="config-greeting-message">Greeting Message</label>
+                            <input type="text" id="config-greeting-message" placeholder="👋 Hi there! How can we help?" value="${escapeHtml(a.greeting_message || '')}" class="form-input">
+                            <small class="form-help">Suggested questions come from your Quick Prompts</small>
+                        </div>
+                        <div class="form-group">
+                            <label>Display Timing</label>
+                            <div class="form-radio-group">
+                                <label class="form-radio">
+                                    <input type="radio" name="start-timing" value="0" ${(a.start_delay_seconds || 0) === 0 ? 'checked' : ''}>
+                                    <span>On page load</span>
+                                </label>
+                                <label class="form-radio">
+                                    <input type="radio" name="start-timing" value="delay" ${(a.start_delay_seconds || 0) > 0 ? 'checked' : ''}>
+                                    <span>After delay</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="form-group" id="start-delay-group" style="${(a.start_delay_seconds || 0) > 0 ? '' : 'display:none'}">
+                            <label for="config-start-delay">Delay (seconds)</label>
+                            <input type="number" id="config-start-delay" min="1" max="60" value="${a.start_delay_seconds || 5}" class="form-input" style="max-width:120px">
+                        </div>
+                    </div>
+                </details>
+
+                <details class="config-section">
+                    <summary class="config-section-title">Sounds</summary>
+                    <div class="config-section-body">
+                        <div class="form-group">
+                            <label for="config-sound-agent">Agent Message</label>
+                            <div class="sound-select-row">
+                                <select id="config-sound-agent" class="form-select">
+                                    ${SOUND_OPTIONS.map(s => `<option value="${s}" ${(a.sound_agent_message || 'none') === s ? 'selected' : ''}>${SOUND_LABELS[s] || s}</option>`).join('')}
+                                </select>
+                                <button type="button" class="btn btn-secondary btn-sm sound-preview-btn" data-sound-select="config-sound-agent" title="Preview">▶</button>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="config-sound-visitor">Visitor Message</label>
+                            <div class="sound-select-row">
+                                <select id="config-sound-visitor" class="form-select">
+                                    ${SOUND_OPTIONS.map(s => `<option value="${s}" ${(a.sound_visitor_message || 'none') === s ? 'selected' : ''}>${SOUND_LABELS[s] || s}</option>`).join('')}
+                                </select>
+                                <button type="button" class="btn btn-secondary btn-sm sound-preview-btn" data-sound-select="config-sound-visitor" title="Preview">▶</button>
+                            </div>
+                        </div>
+                        <small class="form-help">Sounds play inside the visitor's browser when messages are sent or received.</small>
+                    </div>
+                </details>
+
+                <details class="config-section">
+                    <summary class="config-section-title">Customize Theme</summary>
+                    <div class="config-section-body">
+                        ${colorField('config-color', 'Accent Color', primaryColor)}
+                        <h5 class="config-subsection-title">Launcher Button</h5>
+                        ${colorField('config-launcher-bg', 'Button Background', a.launcher_background, primaryColor)}
+                        ${colorField('config-launcher-icon-color', 'Icon Color', a.launcher_icon_color || '#FFFFFF')}
+                        <h5 class="config-subsection-title">Header</h5>
+                        ${colorField('config-header-bg', 'Header Background', a.header_background, pal.headerBg)}
+                        ${colorField('config-header-text-color', 'Header Text Color', a.header_text_color, pal.headerText)}
+                        ${colorField('config-online-color', 'Online Indicator Color', a.online_indicator_color || '#22C55E')}
+                        <h5 class="config-subsection-title">Chat</h5>
+                        ${colorField('config-chat-bg', 'Chat Background', a.chat_background, pal.chatBg)}
+                        ${colorField('config-bot-bg', 'Bot Bubble Background', a.bot_message_background, pal.botBg)}
+                        ${colorField('config-bot-color', 'Bot Message Color', a.bot_message_color, pal.botColor)}
+                        ${colorField('config-user-bg', 'User Bubble Background', a.user_message_background, primaryColor)}
+                        ${colorField('config-user-color', 'User Message Color', a.user_message_color, pal.userColor)}
+                        <h5 class="config-subsection-title">Message Field</h5>
+                        ${colorField('config-input-bg', 'Field Background', a.input_background, pal.inputBg)}
+                        ${colorField('config-input-color', 'Field Text Color', a.input_text_color, pal.inputText)}
+                        ${colorField('config-send-color', 'Send Button Color', a.send_button_color, primaryColor)}
+                        <div class="form-group">
+                            <label for="config-placeholder">Input Placeholder</label>
+                            <input type="text" id="config-placeholder" placeholder="Type your message..." value="${escapeHtml(a.input_placeholder || '')}" class="form-input">
+                        </div>
+                        <h5 class="config-subsection-title">Font</h5>
+                        <div class="form-group">
+                            <select id="config-font" class="form-select">
+                                ${fonts.map(f => `<option value="${f}" ${(a.font_family || 'Inter') === f ? 'selected' : ''}>${f}</option>`).join('')}
+                            </select>
+                        </div>
+                        <h5 class="config-subsection-title">Footer</h5>
+                        ${colorField('config-footer-color', 'Text Color', a.footer_text_color, pal.muted)}
+                        <div class="form-group form-checkbox">
+                            <input type="checkbox" id="config-footer-enabled" ${a.footer_enabled !== false ? 'checked' : ''}>
+                            <label for="config-footer-enabled">Show disclaimer footer</label>
+                        </div>
+                        <div class="form-group" id="footer-text-group" style="${a.footer_enabled !== false ? '' : 'display:none'}">
+                            <label for="config-footer-text">Disclaimer Text</label>
+                            <textarea id="config-footer-text" placeholder="This is an AI agent. Answers may not always be accurate." class="form-textarea" rows="2">${escapeHtml(a.footer_text || '')}</textarea>
+                            <small class="form-help">Shown above the branding link; leave empty to hide</small>
+                        </div>
+                    </div>
+                </details>
+
+                <details class="config-section">
+                    <summary class="config-section-title">Branding</summary>
+                    <div class="config-section-body">
+                        <div class="form-group form-checkbox">
+                            <input type="checkbox" id="config-hide-branding" ${a.hide_branding ? 'checked' : ''}>
+                            <label for="config-hide-branding">Customize widget branding</label>
+                        </div>
+                        <div class="form-group" id="custom-branding-group" style="${a.hide_branding ? '' : 'display:none'}">
+                            <label for="config-custom-branding">Your Branding Text</label>
+                            <input type="text" id="config-custom-branding" placeholder="Powered by Your Company" value="${escapeHtml(a.custom_branding_text || '')}" class="form-input">
+                            <small class="form-help">Leave empty to hide branding completely</small>
+                        </div>
+                        <div class="form-group" id="custom-branding-url-group" style="${a.hide_branding ? '' : 'display:none'}">
+                            <label for="config-custom-branding-url">Branding Link URL (optional)</label>
+                            <input type="url" id="config-custom-branding-url" placeholder="https://yourcompany.com" value="${escapeHtml(a.custom_branding_url || '')}" class="form-input">
+                        </div>
+                    </div>
+                </details>
+
+                <details class="config-section">
+                    <summary class="config-section-title">Custom Code</summary>
+                    <div class="config-section-body">
+                        <div class="form-group">
+                            <label for="config-custom-css">Custom CSS</label>
+                            <textarea id="config-custom-css" class="form-textarea code-textarea" rows="4"
+                                placeholder=".sitechat-window { border: 2px solid #000; }&#10;.sitechat-toggle { transform: scale(1.1); }">${escapeHtml(a.custom_css || '')}</textarea>
+                            <small class="form-help">Injected into the page when the widget loads. Widget classes are prefixed <code>sitechat-</code>.</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="config-custom-js">Custom JavaScript</label>
+                            <textarea id="config-custom-js" class="form-textarea code-textarea" rows="4"
+                                placeholder="sitechat.open(); // opens the widget&#10;console.log(config.siteId);">${escapeHtml(a.custom_js || '')}</textarea>
+                            <small class="form-help">Runs once when the widget finishes loading. Available: <code>sitechat.open()</code>, <code>sitechat.close()</code>, <code>sitechat.siteId</code>, <code>sitechat.apiUrl</code>, <code>config</code>. Only add code you trust — it executes on every page where the widget is embedded.</small>
+                        </div>
+                    </div>
+                </details>
+
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary btn-sm" id="reset-config">Reset to Default</button>
                     <button type="button" class="btn btn-primary btn-sm" id="save-config">Save Changes</button>
                 </div>
             </div>
-            
+
             <div class="widget-preview-container">
                 <div class="preview-header-row">
                     <h4 class="preview-title">Live Preview</h4>
-                    <label class="preview-mode-toggle">
-                        <input type="checkbox" id="preview-interactive-toggle">
-                        <span class="toggle-label">Interactive</span>
+                </div>
+                <div class="live-preview-card">
+                    <p class="form-help">The real chat widget renders on this page — every change applies instantly: position, offsets, launcher, theme, greeting, radius and custom CSS.</p>
+                    <div class="preview-actions">
+                        <button type="button" class="btn btn-secondary btn-sm" id="preview-open-chat">Open chat</button>
+                        <button type="button" class="btn btn-secondary btn-sm" id="preview-close-chat">Close</button>
+                        <button type="button" class="btn btn-secondary btn-sm" id="preview-reload-widget">Reload</button>
+                    </div>
+                    <label class="toggle-label preview-enable-row">
+                        <input type="checkbox" id="preview-enabled" checked>
+                        <span class="toggle-switch"></span>
+                        <span class="toggle-text">Show preview on page</span>
                     </label>
                 </div>
-                <div class="widget-preview-wrapper">
-                    <div class="widget-preview" id="widget-preview">
-                        <div class="widget-preview-header" id="preview-header" style="background: ${primaryColor}">
-                            <span class="widget-preview-title" id="preview-title">${chatTitle}</span>
-                            <div class="widget-preview-controls">
-                                <span class="preview-minimize">−</span>
-                                <span class="preview-close">×</span>
-                            </div>
-                        </div>
-                        <div class="widget-preview-body" id="preview-messages">
-                            <div class="widget-preview-message bot">
-                                <div class="preview-avatar" id="preview-avatar" style="background: ${primaryColor}">
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                                    </svg>
-                                </div>
-                                <div class="preview-bubble" id="preview-welcome">${welcomeMsg}</div>
-                            </div>
-                        </div>
-                        <div class="widget-preview-input">
-                            <input type="text" id="preview-input" placeholder="Type a message..." disabled>
-                            <button style="background: ${primaryColor}" id="preview-send-btn" disabled>
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <line x1="22" y1="2" x2="11" y2="13"></line>
-                                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                                </svg>
-                            </button>
-                        </div>
-                        <div class="widget-preview-branding" id="preview-branding" style="${appearance.hide_branding ? 'display:none' : ''}">
-                            <span id="preview-branding-text">Powered by SiteChat</span>
-                        </div>
-                    </div>
-                    <div class="widget-preview-fab" id="preview-fab" style="background: ${primaryColor}">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                        </svg>
-                    </div>
-                </div>
             </div>
-            
-            <div class="embed-section">
+
+            <div class="embed-section appearance-embed-section">
                 <h4>Embed Code</h4>
                 <p>Copy this code and paste it into your website's HTML, just before the closing &lt;/body&gt; tag.</p>
                 <div class="embed-code-container">
-                    <pre id="security-embed-code" class="embed-code-preview">Loading...</pre>
-                    <button type="button" class="btn btn-secondary btn-sm copy-embed-btn" id="copy-secure-embed">
+                    <pre id="appearance-embed-code" class="embed-code-preview">Loading...</pre>
+                    <button type="button" class="btn btn-secondary btn-sm copy-embed-btn" id="copy-appearance-embed">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
                             <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"></path>
                         </svg>
                         Copy
                     </button>
-                </div>
-                <div class="security-sri-info">
-                    <span class="sri-label">SRI Hash:</span>
-                    <code id="security-sri-hash">Loading...</code>
                 </div>
             </div>
         </div>
@@ -1639,14 +2021,23 @@ function getQuickPromptsTabContent() {
             
             <div class="quick-prompts-content" id="quick-prompts-content" style="${enabled ? '' : 'opacity: 0.5; pointer-events: none;'}">
                 <div class="quick-prompts-list-header">
-                    <span>Prompts</span>
-                    <button type="button" class="btn btn-sm btn-primary" id="add-quick-prompt-btn">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <line x1="12" y1="5" x2="12" y2="19"/>
-                            <line x1="5" y1="12" x2="19" y2="12"/>
-                        </svg>
-                        Add Prompt
-                    </button>
+                    <span>Prompts &amp; Cards</span>
+                    <div class="quick-prompts-add-buttons">
+                        <button type="button" class="btn btn-sm btn-primary" id="add-quick-prompt-btn">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <line x1="12" y1="5" x2="12" y2="19"/>
+                                <line x1="5" y1="12" x2="19" y2="12"/>
+                            </svg>
+                            Add Prompt
+                        </button>
+                        <button type="button" class="btn btn-sm btn-secondary" id="add-quick-card-btn">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="3" y="5" width="18" height="14" rx="2"/>
+                                <line x1="3" y1="10" x2="21" y2="10"/>
+                            </svg>
+                            Add Card
+                        </button>
+                    </div>
                 </div>
                 
                 <div class="quick-prompts-list" id="quick-prompts-list">
@@ -1742,9 +2133,10 @@ function getHandoffTabContent() {
                 <label class="toggle-label">
                     <input type="checkbox" id="handoff-enabled" checked>
                     <span class="toggle-switch"></span>
-                    Enable Human Handoff
+                    Enable Human Agents
                 </label>
                 <span class="form-hint">Allow visitors to request a human agent</span>
+                <span class="form-hint" id="handoff-agent-status" style="display:block;margin-top:6px;"></span>
             </div>
             
             <div class="form-group">
@@ -1979,6 +2371,213 @@ function getEmbedTabContent() {
     `;
 }
 
+// ==================== Visibility & Session Tab ====================
+
+function getVisibilityTabContent() {
+    if (!currentDetailSite) return '<p>No site selected</p>';
+    const v = (currentSiteConfig && currentSiteConfig.visibility) || {};
+    const s = (currentSiteConfig && currentSiteConfig.session) || {};
+    const sched = v.schedule || {};
+    const displayPages = v.display_pages || 'all';
+    const devices = v.devices || 'all';
+    const pageUrls = (v.page_urls || []).join('\n');
+    const days = sched.days || [1, 2, 3, 4, 5];
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const timezones = [
+        '', 'UTC', 'Europe/Lisbon', 'Europe/London', 'Europe/Madrid', 'Europe/Paris',
+        'Europe/Berlin', 'America/New_York', 'America/Chicago', 'America/Denver',
+        'America/Los_Angeles', 'America/Sao_Paulo', 'Asia/Dubai', 'Asia/Kolkata',
+        'Asia/Tokyo', 'Australia/Sydney'
+    ];
+
+    return `
+        <div class="tab-form visibility-tab">
+            <details class="config-section" open>
+                <summary class="config-section-title">Display on pages</summary>
+                <div class="config-section-body">
+                    <div class="form-group form-radio-group">
+                        <label class="form-radio">
+                            <input type="radio" name="vis-pages" value="all" ${displayPages === 'all' ? 'checked' : ''}>
+                            <span>Every page</span>
+                        </label>
+                        <label class="form-radio">
+                            <input type="radio" name="vis-pages" value="include" ${displayPages === 'include' ? 'checked' : ''}>
+                            <span>Only these pages</span>
+                        </label>
+                        <label class="form-radio">
+                            <input type="radio" name="vis-pages" value="exclude" ${displayPages === 'exclude' ? 'checked' : ''}>
+                            <span>Every page except</span>
+                        </label>
+                    </div>
+                    <div class="form-group" id="vis-page-urls-group" style="${displayPages === 'all' ? 'display:none' : ''}">
+                        <label for="vis-page-urls">Page URL patterns</label>
+                        <textarea id="vis-page-urls" class="form-textarea code-textarea" rows="4"
+                            placeholder="/pricing*&#10;https://example.com/checkout*&#10;/docs/*">${escapeHtml(pageUrls)}</textarea>
+                        <small class="form-help">One pattern per line. <code>*</code> matches any characters. Patterns can be paths (<code>/blog/*</code>) or full URLs.</small>
+                    </div>
+                </div>
+            </details>
+
+            <details class="config-section" open>
+                <summary class="config-section-title">Display on devices</summary>
+                <div class="config-section-body">
+                    <div class="form-group form-radio-group">
+                        <label class="form-radio">
+                            <input type="radio" name="vis-devices" value="all" ${devices === 'all' ? 'checked' : ''}>
+                            <span>All devices</span>
+                        </label>
+                        <label class="form-radio">
+                            <input type="radio" name="vis-devices" value="desktop" ${devices === 'desktop' ? 'checked' : ''}>
+                            <span>Desktop only</span>
+                        </label>
+                        <label class="form-radio">
+                            <input type="radio" name="vis-devices" value="mobile" ${devices === 'mobile' ? 'checked' : ''}>
+                            <span>Mobile only</span>
+                        </label>
+                    </div>
+                </div>
+            </details>
+
+            <details class="config-section" open>
+                <summary class="config-section-title">Schedule</summary>
+                <div class="config-section-body">
+                    <div class="form-group form-checkbox">
+                        <input type="checkbox" id="vis-schedule-enabled" ${sched.enabled ? 'checked' : ''}>
+                        <label for="vis-schedule-enabled">Only show the widget on a schedule</label>
+                    </div>
+                    <div id="vis-schedule-fields" style="${sched.enabled ? '' : 'display:none'}">
+                        <div class="form-group">
+                            <label>Active days</label>
+                            <div class="day-picker">
+                                ${dayNames.map((name, i) => `
+                                    <label class="day-chip ${days.includes(i) ? 'selected' : ''}">
+                                        <input type="checkbox" class="vis-day" value="${i}" ${days.includes(i) ? 'checked' : ''}>
+                                        <span>${name}</span>
+                                    </label>
+                                `).join('')}
+                            </div>
+                        </div>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="vis-schedule-start">Start time</label>
+                                <input type="time" id="vis-schedule-start" class="form-input" value="${escapeHtml(sched.start_time || '09:00')}">
+                            </div>
+                            <div class="form-group">
+                                <label for="vis-schedule-end">End time</label>
+                                <input type="time" id="vis-schedule-end" class="form-input" value="${escapeHtml(sched.end_time || '18:00')}">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="vis-schedule-tz">Timezone</label>
+                            <select id="vis-schedule-tz" class="form-select">
+                                ${timezones.map(tz => `<option value="${tz}" ${(sched.timezone || '') === tz ? 'selected' : ''}>${tz || "Visitor's local time"}</option>`).join('')}
+                            </select>
+                            <small class="form-help">End time may cross midnight (e.g. 18:00 – 02:00).</small>
+                        </div>
+                    </div>
+                </div>
+            </details>
+
+            <details class="config-section" open>
+                <summary class="config-section-title">Chat session</summary>
+                <div class="config-section-body">
+                    <div class="form-group form-checkbox">
+                        <input type="checkbox" id="sess-persist" ${s.persist_session !== false ? 'checked' : ''}>
+                        <label for="sess-persist">Keep the conversation across page loads</label>
+                    </div>
+                    <div class="form-group form-checkbox">
+                        <input type="checkbox" id="sess-persist-visitor" ${s.persist_visitor !== false ? 'checked' : ''}>
+                        <label for="sess-persist-visitor">Remember the visitor between visits (page views, triggers)</label>
+                    </div>
+                    <div class="form-group">
+                        <label for="sess-timeout">Start a new conversation after inactivity</label>
+                        <div class="input-suffix-group">
+                            <input type="number" id="sess-timeout" class="form-input" min="0" max="10080" value="${s.session_timeout_minutes || 0}">
+                            <span class="input-suffix">minutes</span>
+                        </div>
+                        <small class="form-help">0 = the session never expires</small>
+                    </div>
+                </div>
+            </details>
+
+            <div class="form-actions">
+                <span class="visibility-status" id="visibility-status"></span>
+                <button type="button" class="btn btn-primary btn-sm" id="save-visibility">Save Changes</button>
+            </div>
+        </div>
+    `;
+}
+
+function initVisibilityHandlers() {
+    const pageRadios = document.querySelectorAll('input[name="vis-pages"]');
+    pageRadios.forEach(r => r.addEventListener('change', () => {
+        const mode = document.querySelector('input[name="vis-pages"]:checked')?.value || 'all';
+        const group = document.getElementById('vis-page-urls-group');
+        if (group) group.style.display = mode === 'all' ? 'none' : '';
+    }));
+
+    const schedToggle = document.getElementById('vis-schedule-enabled');
+    schedToggle?.addEventListener('change', () => {
+        const fields = document.getElementById('vis-schedule-fields');
+        if (fields) fields.style.display = schedToggle.checked ? '' : 'none';
+    });
+
+    document.querySelectorAll('.day-chip input').forEach(cb => {
+        cb.addEventListener('change', () => cb.closest('.day-chip').classList.toggle('selected', cb.checked));
+    });
+
+    document.getElementById('save-visibility')?.addEventListener('click', saveVisibilityConfig);
+}
+
+async function saveVisibilityConfig() {
+    if (!currentDetailSite) return;
+    const btn = document.getElementById('save-visibility');
+    const status = document.getElementById('visibility-status');
+    const original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+
+    const days = [...document.querySelectorAll('.vis-day:checked')].map(cb => parseInt(cb.value, 10));
+    const body = {
+        visibility: {
+            display_pages: document.querySelector('input[name="vis-pages"]:checked')?.value || 'all',
+            page_urls: (document.getElementById('vis-page-urls')?.value || '')
+                .split('\n').map(l => l.trim()).filter(Boolean),
+            devices: document.querySelector('input[name="vis-devices"]:checked')?.value || 'all',
+            schedule: {
+                enabled: document.getElementById('vis-schedule-enabled')?.checked || false,
+                days: days.length ? days : [1, 2, 3, 4, 5],
+                start_time: document.getElementById('vis-schedule-start')?.value || '09:00',
+                end_time: document.getElementById('vis-schedule-end')?.value || '18:00',
+                timezone: document.getElementById('vis-schedule-tz')?.value || null,
+            }
+        },
+        session: {
+            persist_session: document.getElementById('sess-persist')?.checked !== false,
+            persist_visitor: document.getElementById('sess-persist-visitor')?.checked !== false,
+            session_timeout_minutes: parseInt(document.getElementById('sess-timeout')?.value, 10) || 0,
+        }
+    };
+
+    try {
+        const res = await fetch(`${API_BASE}/sites/${currentDetailSite.site_id}/config`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(body)
+        });
+        if (!res.ok) throw new Error('Save failed');
+        currentSiteConfig = await res.json();
+        btn.textContent = 'Saved!';
+        if (status) status.textContent = '';
+        setTimeout(() => { btn.textContent = original; btn.disabled = false; }, 1500);
+    } catch (e) {
+        console.error('Failed to save visibility config:', e);
+        if (status) status.textContent = 'Failed to save';
+        btn.textContent = original;
+        btn.disabled = false;
+    }
+}
+
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
@@ -1986,84 +2585,235 @@ function escapeHtml(text) {
 }
 
 function initAppearanceHandlers() {
-    const colorInput = document.getElementById('config-color');
-    const colorText = document.getElementById('config-color-text');
-    const tempSlider = document.getElementById('config-temperature');
-    const tempValue = document.getElementById('temp-value');
-    const hideBranding = document.getElementById('config-hide-branding');
-    const brandingGroup = document.getElementById('custom-branding-group');
-    const titleInput = document.getElementById('config-title');
-    const welcomeInput = document.getElementById('config-welcome');
-    const positionSelect = document.getElementById('config-position');
-    
-    if (colorInput && colorText) {
-        colorInput.addEventListener('input', () => {
-            colorText.value = colorInput.value;
+    const form = document.getElementById('appearance-form');
+    if (!form) return;
+
+    // Delegated: any input/change inside the form refreshes the preview
+    form.addEventListener('input', (e) => {
+        const el = e.target;
+        // Sync color picker <-> hex text input pairs
+        if (el.classList.contains('color-input')) {
+            const textInput = document.getElementById(el.id + '-text');
+            if (textInput) textInput.value = el.value;
+        } else if (el.classList.contains('color-text-input')) {
+            const picker = document.getElementById(el.id.replace(/-text$/, ''));
+            if (picker && /^#[0-9A-Fa-f]{6}$/.test(el.value)) picker.value = el.value;
+        }
+        updateWidgetPreview();
+    });
+    form.addEventListener('change', updateWidgetPreview);
+
+    // Auto-color reset buttons (↺) — empty value = inherit primary
+    form.addEventListener('click', (e) => {
+        const resetBtn = e.target.closest('.color-reset-btn');
+        if (resetBtn) {
+            const picker = document.getElementById(resetBtn.dataset.target);
+            const textInput = document.getElementById(resetBtn.dataset.target + '-text');
+            if (picker && picker.dataset.autoValue) picker.value = picker.dataset.autoValue;
+            if (textInput) textInput.value = '';
+            updateWidgetPreview();
+        }
+    });
+
+    // Launcher style radio cards
+    form.querySelectorAll('input[name="launcher-style"]').forEach(radio => {
+        radio.addEventListener('change', () => {
+            form.querySelectorAll('.launcher-style-option').forEach(o => o.classList.remove('selected'));
+            radio.closest('.launcher-style-option').classList.add('selected');
+            const textGroup = document.getElementById('launcher-text-group');
+            if (textGroup) {
+                textGroup.style.display = ['text_button', 'quick_input'].includes(radio.value) ? '' : 'none';
+            }
             updateWidgetPreview();
         });
-        colorText.addEventListener('input', () => {
-            if (/^#[0-9A-Fa-f]{6}$/.test(colorText.value)) {
-                colorInput.value = colorText.value;
-                updateWidgetPreview();
+    });
+
+    // Theme preset cards — refresh palette fallbacks on change
+    const THEME_FIELD_MAP = {
+        'config-header-bg': 'headerBg', 'config-header-text-color': 'headerText',
+        'config-chat-bg': 'chatBg', 'config-bot-bg': 'botBg', 'config-bot-color': 'botColor',
+        'config-user-color': 'userColor', 'config-input-bg': 'inputBg', 'config-input-color': 'inputText',
+        'config-footer-color': 'muted'
+    };
+    const refreshThemeAutos = () => {
+        const theme = document.querySelector('input[name="widget-theme"]:checked')?.value || 'light_accent';
+        const newPal = themePaletteDash(document.getElementById('config-color')?.value || '#7B3DFB', theme);
+        Object.entries(THEME_FIELD_MAP).forEach(([id, key]) => {
+            const picker = document.getElementById(id);
+            const text = document.getElementById(id + '-text');
+            const autoVal = newPal[key];
+            if (!autoVal) return;
+            if (picker) {
+                picker.dataset.autoValue = autoVal;
+                if (!text || !text.value.trim()) picker.value = autoVal;
+            }
+            if (text) text.placeholder = 'Auto (' + autoVal + ')';
+        });
+    };
+    form.querySelectorAll('input[name="widget-theme"]').forEach(radio => {
+        radio.addEventListener('change', () => {
+            form.querySelectorAll('.theme-card').forEach(c => c.classList.remove('selected'));
+            radio.closest('.theme-card').classList.add('selected');
+            refreshThemeAutos();
+            updateWidgetPreview();
+        });
+    });
+    // Accent color also feeds accent-theme card previews
+    document.getElementById('config-color')?.addEventListener('input', (e) => {
+        const p = e.target.value;
+        document.querySelectorAll('.theme-card-bubble.user').forEach(b => b.style.background = p);
+        document.querySelectorAll('input[name="widget-theme"][value="light_accent"], input[name="widget-theme"][value="pattern_accent"]')
+            .forEach(r => {
+                const header = r.closest('.theme-card')?.querySelector('.theme-card-header');
+                if (header) header.style.background = p;
+            });
+        refreshThemeAutos();
+    });
+
+    // Border radius slider label
+    const brSlider = document.getElementById('config-border-radius');
+    const brLabel = document.getElementById('border-radius-val');
+    if (brSlider && brLabel) {
+        brSlider.addEventListener('input', () => brLabel.textContent = brSlider.value + 'px');
+    }
+
+    // Offset sliders — update px labels live
+    ['x', 'y'].forEach(axis => {
+        const slider = document.getElementById(`config-offset-${axis}`);
+        const label = document.getElementById(`offset-${axis}-val`);
+        if (slider && label) {
+            slider.addEventListener('input', () => label.textContent = slider.value + 'px');
+        }
+    });
+
+    // Start mode radio cards
+    form.querySelectorAll('input[name="start-mode"]').forEach(radio => {
+        radio.addEventListener('change', () => {
+            form.querySelectorAll('.start-mode-option').forEach(o => o.classList.remove('selected'));
+            radio.closest('.start-mode-option').classList.add('selected');
+            const greetGroup = document.getElementById('greeting-message-group');
+            if (greetGroup) greetGroup.style.display = radio.value === 'greeting' ? '' : 'none';
+            updateWidgetPreview();
+            window.sitechat?.previewStartMode?.();
+        });
+    });
+
+    // Start timing radios — show delay input only for "after delay"
+    form.querySelectorAll('input[name="start-timing"]').forEach(radio => {
+        radio.addEventListener('change', () => {
+            const delayGroup = document.getElementById('start-delay-group');
+            if (delayGroup) delayGroup.style.display = radio.value === 'delay' && radio.checked ? '' : 'none';
+            updateWidgetPreview();
+            window.sitechat?.previewStartMode?.();
+        });
+    });
+
+    // Launcher icon: library picker + upload + remove
+    const iconHidden = document.getElementById('config-launcher-icon');
+    const iconPreviewEl = document.getElementById('launcher-icon-preview');
+    const iconRemoveBtn = document.getElementById('launcher-icon-remove-btn');
+    const setLauncherIcon = (value) => {
+        if (iconHidden) iconHidden.value = value || '';
+        if (iconPreviewEl) iconPreviewEl.innerHTML = launcherIconPreview(value);
+        if (iconRemoveBtn) iconRemoveBtn.disabled = !value;
+        updateWidgetPreview();
+    };
+    const iconLibrary = document.getElementById('launcher-icon-library');
+    if (iconLibrary && !iconLibrary.dataset.built) {
+        iconLibrary.dataset.built = '1';
+        iconLibrary.innerHTML = Object.keys(LAUNCHER_ICONS).map(name =>
+            `<button type="button" class="launcher-icon-choice" data-icon="${name}" title="${name.replace(/_/g, ' ')}">${LAUNCHER_ICONS[name]}</button>`
+        ).join('');
+        iconLibrary.addEventListener('click', (e) => {
+            const btn = e.target.closest('.launcher-icon-choice');
+            if (!btn) return;
+            setLauncherIcon(btn.dataset.icon);
+            iconLibrary.style.display = 'none';
+        });
+    }
+    document.getElementById('launcher-icon-library-btn')?.addEventListener('click', () => {
+        if (iconLibrary) iconLibrary.style.display = iconLibrary.style.display === 'none' ? 'grid' : 'none';
+    });
+    const iconFile = document.getElementById('launcher-icon-file');
+    document.getElementById('launcher-icon-upload-btn')?.addEventListener('click', () => iconFile?.click());
+    iconFile?.addEventListener('change', () => {
+        const file = iconFile.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => setLauncherIcon(reader.result);
+        reader.readAsDataURL(file);
+        iconFile.value = '';
+    });
+    iconRemoveBtn?.addEventListener('click', () => setLauncherIcon(''));
+
+    // Sound preview buttons
+    form.querySelectorAll('.sound-preview-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const sel = document.getElementById(btn.dataset.soundSelect);
+            if (sel) previewSound(sel.value);
+        });
+    });
+
+    // Avatar URL live thumbnail
+    const avatarInput = document.getElementById('config-avatar-url');
+    if (avatarInput) {
+        avatarInput.addEventListener('input', () => {
+            const thumb = document.getElementById('avatar-preview');
+            const url = avatarInput.value.trim();
+            if (thumb) {
+                thumb.innerHTML = url
+                    ? `<img src="${escapeHtml(url)}" alt="" onerror="this.remove()">`
+                    : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>';
             }
         });
     }
-    
-    if (titleInput) {
-        titleInput.addEventListener('input', updateWidgetPreview);
+
+    // White-label branding toggle
+    const hideBranding = document.getElementById('config-hide-branding');
+    if (hideBranding) {
+        hideBranding.addEventListener('change', () => {
+            const g1 = document.getElementById('custom-branding-group');
+            const g2 = document.getElementById('custom-branding-url-group');
+            if (g1) g1.style.display = hideBranding.checked ? '' : 'none';
+            if (g2) g2.style.display = hideBranding.checked ? '' : 'none';
+            updateWidgetPreview();
+        });
     }
-    
-    if (welcomeInput) {
-        welcomeInput.addEventListener('input', updateWidgetPreview);
-    }
-    
-    if (positionSelect) {
-        positionSelect.addEventListener('change', updateWidgetPreview);
-    }
-    
+
+    // Behavior tab: temperature slider label
+    const tempSlider = document.getElementById('config-temperature');
+    const tempValue = document.getElementById('temp-value');
     if (tempSlider && tempValue) {
         tempSlider.addEventListener('input', () => tempValue.textContent = tempSlider.value);
     }
-    
-    const customBrandingInput = document.getElementById('config-custom-branding');
-    const customBrandingUrlGroup = document.querySelector('.form-group[style*="display:none"]') || 
-                                    document.querySelectorAll('.form-group')[6];
-    
-    if (hideBranding && brandingGroup) {
-        hideBranding.addEventListener('change', () => {
-            brandingGroup.style.display = hideBranding.checked ? '' : 'none';
-            if (customBrandingUrlGroup) {
-                customBrandingUrlGroup.style.display = hideBranding.checked ? '' : 'none';
-            }
-            updateWidgetPreview();
-        });
-    }
-    
-    if (customBrandingInput) {
-        customBrandingInput.addEventListener('input', updateWidgetPreview);
-    }
-    
-    const saveBtn = document.getElementById('save-config');
-    if (saveBtn) {
-        saveBtn.addEventListener('click', saveConfig);
-    }
-    
-    const resetBtn = document.getElementById('reset-config');
-    if (resetBtn) {
-        resetBtn.addEventListener('click', resetConfig);
-    }
-    
-    // Initialize appearance embed code and copy button
+
+    document.getElementById('save-config')?.addEventListener('click', saveConfig);
+    document.getElementById('reset-config')?.addEventListener('click', resetConfig);
+
     updateAppearanceEmbedCode();
-    const copyAppearanceBtn = document.getElementById('copy-appearance-embed');
-    if (copyAppearanceBtn) {
-        copyAppearanceBtn.addEventListener('click', copyAppearanceEmbed);
-    }
-    
-    // Initialize appearance preview
+    document.getElementById('copy-appearance-embed')?.addEventListener('click', copyAppearanceEmbed);
+
+    // Live preview: mount the real widget on the page + control buttons
+    ensureLivePreviewWidget();
+    document.getElementById('preview-enabled')?.addEventListener('change', ensureLivePreviewWidget);
+    document.getElementById('preview-open-chat')?.addEventListener('click', () => window.sitechat?.open?.());
+    document.getElementById('preview-close-chat')?.addEventListener('click', () => window.sitechat?.close?.());
+    document.getElementById('preview-reload-widget')?.addEventListener('click', () => {
+        destroyLivePreviewWidget();
+        ensureLivePreviewWidget();
+    });
+
     updateWidgetPreview();
-    
     initInteractivePreview();
+}
+
+function initBehaviorHandlers() {
+    document.getElementById('save-config')?.addEventListener('click', saveConfig);
+    const tempSlider = document.getElementById('config-temperature');
+    const tempValue = document.getElementById('temp-value');
+    if (tempSlider && tempValue) {
+        tempSlider.addEventListener('input', () => tempValue.textContent = tempSlider.value);
+    }
 }
 
 function initInteractivePreview() {
@@ -2100,7 +2850,7 @@ function initInteractivePreview() {
 function resetPreviewMessages() {
     const messagesContainer = document.getElementById('preview-messages');
     const welcomeMsg = document.getElementById('config-welcome')?.value || 'Hi! How can I help you today?';
-    const color = document.getElementById('config-color')?.value || '#0D9488';
+    const color = document.getElementById('config-color')?.value || '#7B3DFB';
     
     if (messagesContainer) {
         messagesContainer.innerHTML = `
@@ -2124,7 +2874,7 @@ async function sendPreviewMessage() {
     if (!input || !messagesContainer || !input.value.trim()) return;
     
     const message = input.value.trim();
-    const color = document.getElementById('config-color')?.value || '#0D9488';
+    const color = document.getElementById('config-color')?.value || '#7B3DFB';
     input.value = '';
     sendBtn.disabled = true;
     
@@ -2657,12 +3407,12 @@ function renderConversationsChart(data) {
                 {
                     label: 'Conversations',
                     data: conversations,
-                    borderColor: '#0d9488',
+                    borderColor: '#7B3DFB',
                     backgroundColor: 'rgba(13, 148, 136, 0.08)',
                     borderWidth: 2,
                     pointRadius: currentPeriod === '7d' ? 4 : 2,
                     pointHoverRadius: 6,
-                    pointBackgroundColor: '#0d9488',
+                    pointBackgroundColor: '#7B3DFB',
                     tension: 0.35,
                     fill: true
                 },
@@ -3018,6 +3768,14 @@ function setupCustomizeTabs() {
         });
     }
     
+    // Footer enabled toggle
+    const footerEnabledCb = document.getElementById('config-footer-enabled');
+    footerEnabledCb?.addEventListener('change', () => {
+        const group = document.getElementById('footer-text-group');
+        if (group) group.style.display = footerEnabledCb.checked ? '' : 'none';
+        updateWidgetPreview();
+    });
+
     // Save and Reset buttons
     document.getElementById('save-config')?.addEventListener('click', saveConfig);
     document.getElementById('reset-config')?.addEventListener('click', resetConfig);
@@ -3027,11 +3785,138 @@ function setupCustomizeTabs() {
 }
 
 function updateWidgetPreview() {
-    const color = document.getElementById('config-color')?.value || '#0D9488';
+    // Push live form values into the real on-page widget preview
+    const color = document.getElementById('config-color')?.value || '#7B3DFB';
     const title = document.getElementById('config-title')?.value || 'Chat with us';
     const welcome = document.getElementById('config-welcome')?.value || 'Hi! How can I help you today?';
-    
-    // Helper function to adjust color brightness
+    updateAppearancePreview(color, adjustHexDash(color, -20), title, welcome);
+    pushLiveAppearance();
+}
+
+function adjustHexDash(hex, amount) {
+    const c = (hex || '#7B3DFB').replace('#', '');
+    const num = parseInt(c, 16);
+    const r = Math.min(255, Math.max(0, (num >> 16) + amount));
+    const g = Math.min(255, Math.max(0, ((num >> 8) & 0x00FF) + amount));
+    const b = Math.min(255, Math.max(0, (num & 0x0000FF) + amount));
+    return '#' + ((r << 16) | (g << 8) | b).toString(16).padStart(6, '0');
+}
+
+// Push the appearance form's current (unsaved) values into the on-page widget.
+function pushLiveAppearance() {
+    if (!window.sitechat?.applyAppearance) return;
+    try {
+        const cfg = getConfigFromForm();
+        if (cfg?.appearance) window.sitechat.applyAppearance(cfg.appearance);
+    } catch (e) { /* form may not be fully rendered yet */ }
+}
+
+// Inject the real widget script on the dashboard page for live preview.
+// The widget only runs on the dashboard in preview mode (data-preview="1"),
+// so window.sitechat here can only ever belong to the preview.
+function ensureLivePreviewWidget() {
+    if (!currentDetailSite) return;
+    const enabled = document.getElementById('preview-enabled')?.checked !== false;
+    if (!enabled) { destroyLivePreviewWidget(); return; }
+    if (window.__sitechatPreviewActive && window.sitechat?.siteId === currentDetailSite.site_id) {
+        pushLiveAppearance();
+        return;
+    }
+    destroyLivePreviewWidget();
+    window.__sitechatPreview = true;
+    window.__sitechatPreviewActive = true;
+    const s = document.createElement('script');
+    s.id = 'sitechat-preview-script';
+    s.src = '/widget/chatbot.min.js?v=' + Date.now();
+    s.dataset.siteId = currentDetailSite.site_id;
+    s.dataset.apiUrl = window.location.origin;
+    s.dataset.preview = '1';
+    s.addEventListener('error', showPreviewLoadError);
+    document.body.appendChild(s);
+    hidePreviewLoadError();
+    // Push form config once the widget API is ready
+    const iv = setInterval(() => {
+        if (window.sitechat?.applyAppearance) {
+            clearInterval(iv);
+            hidePreviewLoadError();
+            pushLiveAppearance();
+        }
+    }, 120);
+    setTimeout(() => {
+        clearInterval(iv);
+        if (!window.sitechat?.applyAppearance) showPreviewLoadError();
+    }, 8000);
+}
+
+function showPreviewLoadError() {
+    const card = document.querySelector('.live-preview-card');
+    if (!card) return;
+    let hint = document.getElementById('preview-load-error');
+    if (!hint) {
+        hint = document.createElement('p');
+        hint.id = 'preview-load-error';
+        hint.className = 'form-help';
+        hint.style.color = 'var(--danger, #dc2626)';
+        card.appendChild(hint);
+    }
+    hint.textContent = 'Preview failed to load — hard-refresh (Cmd+Shift+R) or check the console for errors.';
+    hint.style.display = '';
+}
+
+function hidePreviewLoadError() {
+    const hint = document.getElementById('preview-load-error');
+    if (hint) hint.style.display = 'none';
+}
+
+function destroyLivePreviewWidget() {
+    if (!window.__sitechatPreviewActive) return;
+    try { window.sitechat?.destroy?.(); } catch (e) {}
+    document.getElementById('sitechat-preview-script')?.remove();
+    delete window.__sitechatPreview;
+    delete window.__sitechatPreviewActive;
+}
+
+// Legacy mock-DOM preview updater (unused — replaced by the real on-page widget).
+function updateWidgetPreviewMock() {
+    const val = (id) => document.getElementById(id)?.value;
+    const checked = (id) => document.getElementById(id)?.checked;
+    // Auto-capable color fields have a paired "-text" input: empty text = inherit fallback
+    const colorVal = (id, fallback) => {
+        const text = val(id + '-text');
+        if (text !== undefined) return text.trim() || fallback;
+        return val(id) || fallback;
+    };
+
+    const color = val('config-color') || '#7B3DFB';
+    const theme = document.querySelector('input[name="widget-theme"]:checked')?.value || 'light_accent';
+    const pal = themePaletteDash(color, theme);
+    const borderRadius = parseInt(val('config-border-radius')) || 0;
+    const title = val('config-title') || 'Chat with us';
+    const caption = val('config-agent-caption') || 'Powered by AI';
+    const welcome = val('config-welcome') || 'Hi! How can I help you today?';
+    const avatarUrl = val('config-avatar-url')?.trim();
+    const showOnline = checked('config-show-online') !== false;
+    const onlineColor = colorVal('config-online-color', '#22C55E');
+    const headerBg = colorVal('config-header-bg', pal.headerBg);
+    const headerText = colorVal('config-header-text-color', pal.headerText);
+    const chatBg = colorVal('config-chat-bg', pal.chatBg);
+    const botBg = colorVal('config-bot-bg', pal.botBg);
+    const botColor = colorVal('config-bot-color', pal.botColor);
+    const userBg = colorVal('config-user-bg', color);
+    const userColor = colorVal('config-user-color', pal.userColor);
+    const inputBg = colorVal('config-input-bg', pal.inputBg);
+    const inputColor = colorVal('config-input-color', pal.inputText);
+    const footerColor = colorVal('config-footer-color', pal.muted);
+    const sendColor = colorVal('config-send-color', color);
+    const launcherBg = colorVal('config-launcher-bg', color);
+    const launcherIconColor = colorVal('config-launcher-icon-color', '#FFFFFF');
+    const fontFamily = val('config-font') || 'Inter';
+    const placeholder = val('config-placeholder') || 'Type your message...';
+    const footerText = val('config-footer-text')?.trim();
+    const launcherStyle = document.querySelector('input[name="launcher-style"]:checked')?.value || 'button';
+    const launcherText = val('config-launcher-text') || 'Ask us anything';
+    const position = val('config-position') || 'bottom-right';
+
     function adjustColor(hex, amount) {
         let c = hex.replace('#', '');
         let num = parseInt(c, 16);
@@ -3040,76 +3925,172 @@ function updateWidgetPreview() {
         let b = Math.min(255, Math.max(0, (num & 0x0000FF) + amount));
         return '#' + ((r << 16) | (g << 8) | b).toString(16).padStart(6, '0');
     }
-    
-    const darkColor = adjustColor(color, -20);
-    
-    // Update preview header
+
+    const preview = document.getElementById('widget-preview');
+    if (!preview) return;
+
+    preview.style.fontFamily = fontFamily === 'System'
+        ? '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+        : `'${fontFamily}', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif`;
+
+    // Header
     const previewHeader = document.getElementById('preview-header');
     if (previewHeader) {
-        previewHeader.style.background = `linear-gradient(135deg, ${color}, ${darkColor})`;
+        previewHeader.style.background = `linear-gradient(135deg, ${headerBg}, ${adjustColor(headerBg, -20)})`;
+        previewHeader.style.color = headerText;
     }
-    
-    // Update preview title
     const previewTitle = document.getElementById('preview-title');
-    if (previewTitle) {
-        previewTitle.textContent = title;
+    if (previewTitle) previewTitle.textContent = title;
+    const previewCaption = document.getElementById('preview-caption');
+    if (previewCaption) {
+        previewCaption.textContent = caption;
+        previewCaption.style.color = headerText;
+        previewCaption.style.opacity = '0.85';
     }
-    
-    // Update preview welcome message
+
+    // Header avatar + online dot
+    const headerAvatar = document.getElementById('preview-header-avatar');
+    if (headerAvatar) {
+        if (avatarUrl) {
+            headerAvatar.style.backgroundImage = `url("${avatarUrl}")`;
+            headerAvatar.classList.add('has-img');
+        } else {
+            headerAvatar.style.backgroundImage = '';
+            headerAvatar.classList.remove('has-img');
+        }
+    }
+    const onlineDot = document.getElementById('preview-online-dot');
+    if (onlineDot) {
+        onlineDot.style.display = showOnline ? '' : 'none';
+        onlineDot.style.background = onlineColor;
+    }
+
+    // Messages area + bubbles
+    const previewBody = document.getElementById('preview-messages');
+    if (previewBody) {
+        previewBody.style.background = chatBg;
+        if (pal.pattern) {
+            previewBody.style.backgroundImage = 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'120\' height=\'120\' viewBox=\'0 0 120 120\'%3E%3Cg fill=\'none\' stroke=\'%2394a3b8\' stroke-opacity=\'0.14\' stroke-width=\'1.5\'%3E%3Cpath d=\'M20 25a4 4 0 0 1 4-4h12a4 4 0 0 1 4 4v8a4 4 0 0 1-4 4h-8l-6 5v-5h-2a4 4 0 0 1-4-4z\'/%3E%3Cpath d=\'M80 60a4 4 0 0 1 4-4h12a4 4 0 0 1 4 4v8a4 4 0 0 1-4 4h-8l-6 5v-5h-2a4 4 0 0 1-4-4z\'/%3E%3Ccircle cx=\'30\' cy=\'85\' r=\'6\'/%3E%3Cpath d=\'M27 85h6M30 82v6\'/%3E%3Cpath d=\'M70 20l3 6 6 3-6 3-3 6-3-6-6-3 6-3z\'/%3E%3Cpath d=\'M15 60h8M19 56v8\'/%3E%3Ccircle cx=\'95\' cy=\'100\' r=\'5\'/%3E%3Cpath d=\'M50 95q5-8 10 0t10 0\'/%3E%3C/g%3E%3C/svg%3E")';
+        } else {
+            previewBody.style.backgroundImage = '';
+        }
+    }
     const previewWelcome = document.getElementById('preview-welcome');
     if (previewWelcome) {
         previewWelcome.textContent = welcome;
+        previewWelcome.style.background = botBg;
+        previewWelcome.style.color = botColor;
+        previewWelcome.style.borderRadius = `${Math.max(4, borderRadius - 2)}px ${Math.max(4, borderRadius - 2)}px ${Math.max(4, borderRadius - 2)}px 4px`;
     }
-    
-    // Update preview avatar
+    const userBubble = document.getElementById('preview-user-bubble');
+    if (userBubble) {
+        userBubble.style.background = `linear-gradient(135deg, ${userBg}, ${adjustColor(userBg, -20)})`;
+        userBubble.style.color = userColor;
+        userBubble.style.borderRadius = `${Math.max(4, borderRadius - 2)}px ${Math.max(4, borderRadius - 2)}px 4px ${Math.max(4, borderRadius - 2)}px`;
+    }
+    // Window + input border radius
+    const previewWindow = document.getElementById('widget-preview');
+    if (previewWindow) previewWindow.style.borderRadius = borderRadius + 'px';
+    const previewInputForm = document.querySelector('#widget-preview .widget-preview-input');
+    if (previewInputForm) {
+        previewInputForm.style.borderRadius = Math.max(6, borderRadius - 4) + 'px';
+        previewInputForm.style.background = inputBg;
+    }
+
+    // Bot avatar in messages
     const previewAvatar = document.getElementById('preview-avatar');
     if (previewAvatar) {
-        previewAvatar.style.background = `linear-gradient(135deg, ${color}, ${darkColor})`;
+        previewAvatar.style.background = `linear-gradient(135deg, ${color}, ${adjustColor(color, -20)})`;
+        if (avatarUrl) {
+            previewAvatar.style.backgroundImage = `url("${avatarUrl}")`;
+            previewAvatar.classList.add('has-img');
+        } else {
+            previewAvatar.style.backgroundImage = '';
+            previewAvatar.classList.remove('has-img');
+        }
     }
-    
-    // Update preview send button
-    const previewSend = document.getElementById('preview-send');
+
+    // Input area
+    const previewInput = document.getElementById('preview-input');
+    if (previewInput) {
+        previewInput.style.background = inputBg;
+        previewInput.style.color = inputColor;
+        previewInput.placeholder = placeholder;
+    }
+    const previewSend = document.getElementById('preview-send-btn');
     if (previewSend) {
-        previewSend.style.background = `linear-gradient(135deg, ${color}, ${darkColor})`;
+        previewSend.style.background = `linear-gradient(135deg, ${sendColor}, ${adjustColor(sendColor, -20)})`;
     }
-    
-    // Update preview branding
+
+    // Footer disclaimer
+    const previewFooter = document.getElementById('preview-footer-text');
+    if (previewFooter) {
+        const footerOn = checked('config-footer-enabled') !== false;
+        previewFooter.textContent = footerText || '';
+        previewFooter.style.color = footerColor;
+        previewFooter.style.display = footerOn && footerText ? '' : 'none';
+    }
+
+    // Custom CSS live preview (unscoped — user rules target widget classes)
+    const customCss = val('config-custom-css') || '';
+    let previewCssEl = document.getElementById('preview-custom-css');
+    if (customCss.trim()) {
+        if (!previewCssEl) {
+            previewCssEl = document.createElement('style');
+            previewCssEl.id = 'preview-custom-css';
+            document.head.appendChild(previewCssEl);
+        }
+        previewCssEl.textContent = customCss;
+    } else if (previewCssEl) {
+        previewCssEl.remove();
+    }
+
+    // Branding
     const previewBranding = document.getElementById('preview-branding');
     if (previewBranding) {
-        const whiteLabelEnabled = document.getElementById('config-hide-branding')?.checked;
-        const customBrandingText = document.getElementById('config-custom-branding')?.value?.trim();
-        const customBrandingUrl = document.getElementById('config-custom-branding-url')?.value;
-        const link = previewBranding.querySelector('a');
-        
-        // Toggle white-label fields visibility
-        document.querySelectorAll('.whitelabel-fields').forEach(el => {
-            el.style.display = whiteLabelEnabled ? 'block' : 'none';
-        });
-        
-        if (whiteLabelEnabled) {
-            if (customBrandingText) {
-                // Show custom branding
-                previewBranding.classList.remove('hidden');
-                if (link) {
-                    link.innerHTML = customBrandingText;
-                    link.href = customBrandingUrl || '#';
-                }
-            } else {
-                // White-label enabled but no text - hide completely
-                previewBranding.classList.add('hidden');
-            }
+        const whiteLabelEnabled = checked('config-hide-branding');
+        const customBrandingText = val('config-custom-branding')?.trim();
+        const brandingText = document.getElementById('preview-branding-text');
+        if (whiteLabelEnabled && !customBrandingText) {
+            previewBranding.style.display = 'none';
         } else {
-            // White-label disabled - show default SiteChat branding
-            previewBranding.classList.remove('hidden');
-            if (link) {
-                link.innerHTML = 'Powered by <strong>SiteChat</strong>';
-                link.href = window.location.origin;
+            previewBranding.style.display = '';
+            if (brandingText) {
+                brandingText.textContent = whiteLabelEnabled ? customBrandingText : 'Powered by SwiftChat';
             }
         }
     }
-    
-    // Update appearance preview (mini preview in appearance tab)
-    updateAppearancePreview(color, darkColor, title, welcome);
+
+    // Launcher (FAB) variant
+    const fab = document.getElementById('preview-fab');
+    if (fab) {
+        fab.className = 'widget-preview-fab';
+        fab.classList.add(position === 'bottom-left' ? 'left' : position === 'bottom-center' ? 'center' : 'right');
+        fab.style.background = `linear-gradient(135deg, ${launcherBg}, ${adjustColor(launcherBg, -20)})`;
+        fab.style.color = launcherIconColor;
+        const iconChoice = val('config-launcher-icon') || '';
+        const iconIsImg = iconChoice && !LAUNCHER_ICONS[iconChoice];
+        const chatIcon = iconIsImg
+            ? `<img src="${escapeHtml(iconChoice)}" alt="" style="width:26px;height:26px;border-radius:50%;object-fit:cover">`
+            : (LAUNCHER_ICONS[iconChoice] || DEFAULT_LAUNCHER_SVG).replace('<svg', '<svg width="24" height="24"');
+        if (launcherStyle === 'text_button') {
+            fab.classList.add('fab-text');
+            fab.innerHTML = chatIcon.replace('width="24" height="24"', 'width="16" height="16"') + `<span>${escapeHtml(launcherText)}</span>`;
+        } else if (launcherStyle === 'agent_profile') {
+            fab.classList.add('fab-agent');
+            fab.innerHTML = avatarUrl
+                ? `<img src="${escapeHtml(avatarUrl)}" alt="" class="fab-avatar-img">`
+                : chatIcon;
+        } else if (launcherStyle === 'quick_input') {
+            fab.classList.add('fab-quick');
+            fab.innerHTML = `<span class="fab-quick-text">${escapeHtml(launcherText)}</span><span class="fab-quick-btn">${chatIcon.replace('width="24" height="24"', 'width="14" height="14"')}</span>`;
+        } else {
+            fab.innerHTML = chatIcon;
+        }
+    }
+
+    // Update appearance preview (mini preview in side panel)
+    updateAppearancePreview(color, adjustColor(color, -20), title, welcome);
 }
 
 function updateAppearancePreview(color, darkColor, title, welcome) {
@@ -3164,7 +4145,7 @@ function updateAppearancePreview(color, darkColor, title, welcome) {
         } else {
             appearancePreviewBranding.classList.remove('hidden');
             if (link) {
-                link.innerHTML = 'Powered by <strong>SiteChat</strong>';
+                link.innerHTML = 'Powered by <strong>SwiftChat</strong>';
                 link.href = window.location.origin;
             }
         }
@@ -3244,11 +4225,59 @@ async function loadSiteConfig(siteId) {
 function getDefaultConfig() {
     return {
         appearance: {
-            primary_color: '#0D9488',
+            primary_color: '#7B3DFB',
             chat_title: 'Chat with us',
             welcome_message: 'Hi! How can I help you today?',
             bot_avatar_url: null,
-            position: 'bottom-right'
+            position: 'bottom-right',
+            agent_caption: 'Powered by AI',
+            show_online_indicator: true,
+            online_indicator_color: '#22C55E',
+            theme: 'light_accent',
+            border_radius: 16,
+            header_background: null,
+            header_text_color: null,
+            chat_background: null,
+            bot_message_background: null,
+            bot_message_color: null,
+            user_message_background: null,
+            user_message_color: null,
+            input_background: null,
+            input_text_color: null,
+            input_placeholder: 'Type your message...',
+            send_button_color: null,
+            launcher_background: null,
+            launcher_icon_color: '#FFFFFF',
+            footer_enabled: true,
+            footer_text: null,
+            footer_text_color: null,
+            custom_css: null,
+            custom_js: null,
+            font_family: null,
+            window_width: 400,
+            window_height: 560,
+            launcher_style: 'button',
+            launcher_text: null,
+            launcher_icon: null,
+            offset_x: 24,
+            offset_y: 24,
+            movable_window: false,
+            start_mode: 'button_only',
+            start_delay_seconds: 0,
+            greeting_message: null,
+            sound_agent_message: 'none',
+            sound_visitor_message: 'none'
+        },
+        visibility: {
+            display_pages: 'all',
+            page_urls: [],
+            devices: 'all',
+            schedule: { enabled: false, days: [1, 2, 3, 4, 5], start_time: '09:00', end_time: '18:00', timezone: null }
+        },
+        session: {
+            persist_session: true,
+            persist_visitor: true,
+            session_timeout_minutes: 0
         },
         behavior: {
             system_prompt: 'You are a helpful assistant. Answer questions based on the provided context.',
@@ -3267,71 +4296,212 @@ function getDefaultConfig() {
 function populateConfigForm(config) {
     const appearance = config.appearance || {};
     const behavior = config.behavior || {};
-    
+    const primary = appearance.primary_color || '#7B3DFB';
+
+    const setVal = (id, value) => { const el = document.getElementById(id); if (el) el.value = value; };
+    const setColor = (id, value, auto) => {
+        setVal(id, value || auto || primary);
+        setVal(id + '-text', value || '');
+    };
+
     // Appearance
-    const colorInput = document.getElementById('config-color');
-    const colorTextInput = document.getElementById('config-color-text');
-    if (colorInput) colorInput.value = appearance.primary_color || '#0D9488';
-    if (colorTextInput) colorTextInput.value = (appearance.primary_color || '#0D9488').toUpperCase();
-    
-    const titleInput = document.getElementById('config-title');
-    if (titleInput) titleInput.value = appearance.chat_title || 'Chat with us';
-    
-    const welcomeInput = document.getElementById('config-welcome');
-    if (welcomeInput) welcomeInput.value = appearance.welcome_message || 'Hi! How can I help you today?';
-    
-    const positionSelect = document.getElementById('config-position');
-    if (positionSelect) positionSelect.value = appearance.position || 'bottom-right';
-    
+    setColor('config-color', primary);
+    setVal('config-color-text', primary.toUpperCase());
+    setVal('config-title', appearance.chat_title || 'Chat with us');
+    setVal('config-agent-caption', appearance.agent_caption || 'Powered by AI');
+    setVal('config-avatar-url', appearance.bot_avatar_url || '');
+    setVal('config-welcome', appearance.welcome_message || 'Hi! How can I help you today?');
+    setVal('config-position', appearance.position || 'bottom-right');
+    setVal('config-offset-x', appearance.offset_x ?? 24);
+    setVal('config-offset-y', appearance.offset_y ?? 24);
+    const offsetXVal = document.getElementById('offset-x-val');
+    if (offsetXVal) offsetXVal.textContent = (appearance.offset_x ?? 24) + 'px';
+    const offsetYVal = document.getElementById('offset-y-val');
+    if (offsetYVal) offsetYVal.textContent = (appearance.offset_y ?? 24) + 'px';
+    const movableCb = document.getElementById('config-movable-window');
+    if (movableCb) movableCb.checked = appearance.movable_window === true;
+    setVal('config-window-width', appearance.window_width || 400);
+    setVal('config-window-height', appearance.window_height || 560);
+
+    // Theme preset + border radius
+    const theme = appearance.theme || 'light_accent';
+    const pal = themePaletteDash(primary, theme);
+    document.querySelectorAll('input[name="widget-theme"]').forEach(r => {
+        r.checked = r.value === theme;
+        r.closest('.theme-card')?.classList.toggle('selected', r.checked);
+    });
+    setVal('config-border-radius', appearance.border_radius ?? 16);
+    const brVal = document.getElementById('border-radius-val');
+    if (brVal) brVal.textContent = (appearance.border_radius ?? 16) + 'px';
+
+    // Start mode
+    const startMode = appearance.start_mode || 'button_only';
+    document.querySelectorAll('input[name="start-mode"]').forEach(r => {
+        r.checked = r.value === startMode;
+        r.closest('.start-mode-option')?.classList.toggle('selected', r.checked);
+    });
+    const greetGroup = document.getElementById('greeting-message-group');
+    if (greetGroup) greetGroup.style.display = startMode === 'greeting' ? '' : 'none';
+    setVal('config-greeting-message', appearance.greeting_message || '');
+    const delay = appearance.start_delay_seconds || 0;
+    document.querySelectorAll('input[name="start-timing"]').forEach(r => {
+        r.checked = delay > 0 ? r.value === 'delay' : r.value === '0';
+    });
+    const delayGroup = document.getElementById('start-delay-group');
+    if (delayGroup) delayGroup.style.display = delay > 0 ? '' : 'none';
+    setVal('config-start-delay', delay || 5);
+
+    // Launcher icon
+    setVal('config-launcher-icon', appearance.launcher_icon || '');
+    const iconPreview = document.getElementById('launcher-icon-preview');
+    if (iconPreview) iconPreview.innerHTML = launcherIconPreview(appearance.launcher_icon);
+    const iconRemove = document.getElementById('launcher-icon-remove-btn');
+    if (iconRemove) iconRemove.disabled = !appearance.launcher_icon;
+
+    // Sounds
+    setVal('config-sound-agent', appearance.sound_agent_message || 'none');
+    setVal('config-sound-visitor', appearance.sound_visitor_message || 'none');
+    setVal('config-launcher-text', appearance.launcher_text || '');
+    setVal('config-placeholder', appearance.input_placeholder || '');
+    setVal('config-footer-text', appearance.footer_text || '');
+    setVal('config-custom-css', appearance.custom_css || '');
+    setVal('config-custom-js', appearance.custom_js || '');
+    setVal('config-font', appearance.font_family || 'Inter');
+
+    const footerEnabled = document.getElementById('config-footer-enabled');
+    if (footerEnabled) footerEnabled.checked = appearance.footer_enabled !== false;
+    const footerTextGroup = document.getElementById('footer-text-group');
+    if (footerTextGroup) footerTextGroup.style.display = appearance.footer_enabled !== false ? '' : 'none';
+
+    const showOnline = document.getElementById('config-show-online');
+    if (showOnline) showOnline.checked = appearance.show_online_indicator !== false;
+
+    // Colors — empty text input = auto (theme palette)
+    setColor('config-launcher-bg', appearance.launcher_background, primary);
+    setColor('config-launcher-icon-color', appearance.launcher_icon_color || '#FFFFFF');
+    setColor('config-header-bg', appearance.header_background, pal.headerBg);
+    setColor('config-header-text-color', appearance.header_text_color, pal.headerText);
+    setColor('config-online-color', appearance.online_indicator_color || '#22C55E');
+    setColor('config-chat-bg', appearance.chat_background, pal.chatBg);
+    setColor('config-bot-bg', appearance.bot_message_background, pal.botBg);
+    setColor('config-bot-color', appearance.bot_message_color, pal.botColor);
+    setColor('config-user-bg', appearance.user_message_background, primary);
+    setColor('config-user-color', appearance.user_message_color, pal.userColor);
+    setColor('config-input-bg', appearance.input_background, pal.inputBg);
+    setColor('config-input-color', appearance.input_text_color, pal.inputText);
+    setColor('config-send-color', appearance.send_button_color, primary);
+    setColor('config-footer-color', appearance.footer_text_color, pal.muted);
+
+    // Launcher style
+    const launcherStyle = appearance.launcher_style || 'button';
+    document.querySelectorAll('input[name="launcher-style"]').forEach(r => {
+        r.checked = r.value === launcherStyle;
+        r.closest('.launcher-style-option')?.classList.toggle('selected', r.checked);
+    });
+    const textGroup = document.getElementById('launcher-text-group');
+    if (textGroup) {
+        textGroup.style.display = ['text_button', 'quick_input'].includes(launcherStyle) ? '' : 'none';
+    }
+
+    // Avatar thumbnail
+    const avatarThumb = document.getElementById('avatar-preview');
+    if (avatarThumb) {
+        avatarThumb.innerHTML = appearance.bot_avatar_url
+            ? `<img src="${escapeHtml(appearance.bot_avatar_url)}" alt="">`
+            : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>';
+    }
+
     // White-label options
     const hideBrandingCheckbox = document.getElementById('config-hide-branding');
     const whiteLabelEnabled = appearance.hide_branding === true;
     if (hideBrandingCheckbox) hideBrandingCheckbox.checked = whiteLabelEnabled;
-    
-    const customBrandingInput = document.getElementById('config-custom-branding');
-    if (customBrandingInput) customBrandingInput.value = appearance.custom_branding_text || '';
-    
-    const customBrandingUrlInput = document.getElementById('config-custom-branding-url');
-    if (customBrandingUrlInput) customBrandingUrlInput.value = appearance.custom_branding_url || '';
-    
-    // Show/hide white-label fields based on checkbox
+    setVal('config-custom-branding', appearance.custom_branding_text || '');
+    setVal('config-custom-branding-url', appearance.custom_branding_url || '');
+    const g1 = document.getElementById('custom-branding-group');
+    const g2 = document.getElementById('custom-branding-url-group');
+    if (g1) g1.style.display = whiteLabelEnabled ? '' : 'none';
+    if (g2) g2.style.display = whiteLabelEnabled ? '' : 'none';
     document.querySelectorAll('.whitelabel-fields').forEach(el => {
         el.style.display = whiteLabelEnabled ? 'block' : 'none';
     });
-    
+
     // Behavior
     const promptInput = document.getElementById('config-prompt');
     if (promptInput) promptInput.value = behavior.system_prompt || '';
-    
     const tempSlider = document.getElementById('config-temperature');
     const tempValue = document.getElementById('temp-value');
     if (tempSlider) tempSlider.value = behavior.temperature || 0.7;
     if (tempValue) tempValue.textContent = behavior.temperature || 0.7;
-    
     const maxTokensInput = document.getElementById('config-max-tokens');
     if (maxTokensInput) maxTokensInput.value = behavior.max_tokens || 500;
-    
     const showSourcesCheckbox = document.getElementById('config-show-sources');
     if (showSourcesCheckbox) showSourcesCheckbox.checked = behavior.show_sources !== false;
 }
 
 function getConfigFromForm() {
+    const val = (id) => document.getElementById(id)?.value;
+    const checked = (id) => document.getElementById(id)?.checked;
+    // Auto-capable colors: paired "-text" input empty => null (inherit)
+    const autoColor = (id) => {
+        const text = val(id + '-text');
+        return text && text.trim() ? text.trim() : null;
+    };
+    const launcherStyle = document.querySelector('input[name="launcher-style"]:checked')?.value || 'button';
+
     return {
         appearance: {
-            primary_color: document.getElementById('config-color')?.value || '#0D9488',
-            chat_title: document.getElementById('config-title')?.value || 'Chat with us',
-            welcome_message: document.getElementById('config-welcome')?.value || 'Hi! How can I help you today?',
-            bot_avatar_url: null,
-            position: document.getElementById('config-position')?.value || 'bottom-right',
-            hide_branding: document.getElementById('config-hide-branding')?.checked || false,
-            custom_branding_text: document.getElementById('config-custom-branding')?.value || null,
-            custom_branding_url: document.getElementById('config-custom-branding-url')?.value || null
+            primary_color: val('config-color') || '#7B3DFB',
+            chat_title: val('config-title') || 'Chat with us',
+            welcome_message: val('config-welcome') || 'Hi! How can I help you today?',
+            bot_avatar_url: val('config-avatar-url')?.trim() || null,
+            position: val('config-position') || 'bottom-right',
+            hide_branding: checked('config-hide-branding') || false,
+            custom_branding_text: val('config-custom-branding') || null,
+            custom_branding_url: val('config-custom-branding-url') || null,
+            agent_caption: val('config-agent-caption') || 'Powered by AI',
+            show_online_indicator: checked('config-show-online') !== false,
+            online_indicator_color: val('config-online-color') || '#22C55E',
+            theme: document.querySelector('input[name="widget-theme"]:checked')?.value || 'light_accent',
+            border_radius: Math.min(28, Math.max(0, parseInt(val('config-border-radius')) || 0)),
+            header_background: autoColor('config-header-bg'),
+            header_text_color: autoColor('config-header-text-color'),
+            chat_background: autoColor('config-chat-bg'),
+            bot_message_background: autoColor('config-bot-bg'),
+            bot_message_color: autoColor('config-bot-color'),
+            user_message_background: autoColor('config-user-bg'),
+            user_message_color: autoColor('config-user-color'),
+            input_background: autoColor('config-input-bg'),
+            input_text_color: autoColor('config-input-color'),
+            input_placeholder: val('config-placeholder') || 'Type your message...',
+            send_button_color: autoColor('config-send-color'),
+            launcher_background: autoColor('config-launcher-bg'),
+            launcher_icon_color: val('config-launcher-icon-color') || '#FFFFFF',
+            footer_enabled: checked('config-footer-enabled') !== false,
+            footer_text: val('config-footer-text')?.trim() || null,
+            footer_text_color: autoColor('config-footer-color'),
+            custom_css: val('config-custom-css')?.trim() || null,
+            custom_js: val('config-custom-js')?.trim() || null,
+            font_family: val('config-font') === 'Inter' ? null : val('config-font'),
+            window_width: parseInt(val('config-window-width')) || 400,
+            window_height: parseInt(val('config-window-height')) || 560,
+            launcher_style: launcherStyle,
+            launcher_text: val('config-launcher-text')?.trim() || null,
+            launcher_icon: val('config-launcher-icon')?.trim() || null,
+            offset_x: Math.min(200, Math.max(0, parseInt(val('config-offset-x')) || 0)),
+            offset_y: Math.min(200, Math.max(0, parseInt(val('config-offset-y')) || 0)),
+            movable_window: checked('config-movable-window') || false,
+            start_mode: document.querySelector('input[name="start-mode"]:checked')?.value || 'button_only',
+            start_delay_seconds: document.querySelector('input[name="start-timing"]:checked')?.value === 'delay'
+                ? Math.min(60, Math.max(1, parseInt(val('config-start-delay')) || 5)) : 0,
+            greeting_message: val('config-greeting-message')?.trim() || null,
+            sound_agent_message: val('config-sound-agent') || 'none',
+            sound_visitor_message: val('config-sound-visitor') || 'none'
         },
         behavior: {
-            system_prompt: document.getElementById('config-prompt')?.value || '',
-            temperature: parseFloat(document.getElementById('config-temperature')?.value) || 0.7,
-            max_tokens: parseInt(document.getElementById('config-max-tokens')?.value) || 500,
-            show_sources: document.getElementById('config-show-sources')?.checked ?? true
+            system_prompt: val('config-prompt') || '',
+            temperature: parseFloat(val('config-temperature')) || 0.7,
+            max_tokens: parseInt(val('config-max-tokens')) || 500,
+            show_sources: checked('config-show-sources') ?? true
         }
     };
 }
@@ -3346,6 +4516,10 @@ async function saveConfig() {
     
     try {
         const config = getConfigFromForm();
+        // Only send sections whose form is on screen — the PUT replaces each
+        // section wholesale, so absent fields would reset saved values.
+        if (!document.getElementById('appearance-form')) delete config.appearance;
+        if (!document.getElementById('config-prompt')) delete config.behavior;
         
         const response = await fetch(`${API_BASE}/sites/${currentDetailSite.site_id}/config`, {
             method: 'PUT',
@@ -4447,6 +5621,7 @@ let quickPromptsState = {
 
 function initQuickPromptsHandlers() {
     document.getElementById('add-quick-prompt-btn')?.addEventListener('click', () => addQuickPromptRow());
+    document.getElementById('add-quick-card-btn')?.addEventListener('click', () => addQuickPromptRow('card'));
     document.getElementById('add-quick-prompt-empty-btn')?.addEventListener('click', () => addQuickPromptRow());
     
     document.getElementById('quick-prompts-enabled')?.addEventListener('change', (e) => {
@@ -4534,8 +5709,10 @@ function renderQuickPromptsList() {
     listEl.innerHTML = '';
     
     quickPromptsState.prompts.forEach((prompt, index) => {
+        const isCard = (prompt.type || 'suggestion') === 'card';
+        const buttons = Array.isArray(prompt.buttons) ? prompt.buttons : [];
         const item = document.createElement('div');
-        item.className = 'quick-prompt-item';
+        item.className = 'quick-prompt-item' + (isCard ? ' quick-prompt-card-item' : '');
         item.dataset.id = prompt.id;
         item.innerHTML = `
             <div class="quick-prompt-drag-handle">
@@ -4549,7 +5726,13 @@ function renderQuickPromptsList() {
                 <input type="text" class="quick-prompt-icon-input" value="${escapeHtml(prompt.icon || '')}" placeholder="💬" maxlength="4" title="Emoji icon">
             </div>
             <div class="quick-prompt-text-wrapper">
-                <input type="text" class="quick-prompt-text-input" value="${escapeHtml(prompt.text)}" placeholder="Enter prompt text..." maxlength="100">
+                <input type="text" class="quick-prompt-text-input" value="${escapeHtml(prompt.text)}" placeholder="${isCard ? 'Card title...' : 'Enter prompt text...'}" maxlength="100">
+            </div>
+            <div class="quick-prompt-type-wrapper">
+                <select class="quick-prompt-type-select" title="Prompt type">
+                    <option value="suggestion" ${!isCard ? 'selected' : ''}>Chip</option>
+                    <option value="card" ${isCard ? 'selected' : ''}>Card</option>
+                </select>
             </div>
             <div class="quick-prompt-actions">
                 <label class="quick-prompt-toggle" title="Enable/Disable">
@@ -4573,43 +5756,107 @@ function renderQuickPromptsList() {
                     </svg>
                 </button>
             </div>
+            ${isCard ? `
+            <div class="quick-card-fields">
+                <input type="text" class="form-input quick-card-desc" value="${escapeHtml(prompt.description || '')}" placeholder="Card description (optional)" maxlength="300">
+                <input type="url" class="form-input quick-card-image" value="${escapeHtml(prompt.image_url || '')}" placeholder="Image/icon URL (optional)">
+                <div class="quick-card-buttons-label">Buttons</div>
+                <div class="quick-card-buttons" data-index="${index}">
+                    ${buttons.map((b, bi) => `
+                        <div class="quick-card-button-row" data-btn-index="${bi}">
+                            <input type="text" class="form-input quick-card-btn-label" value="${escapeHtml(b.label || '')}" placeholder="Button label" maxlength="60">
+                            <select class="form-select quick-card-btn-action">
+                                <option value="send_message" ${b.action === 'send_message' || !b.action ? 'selected' : ''}>Ask AI</option>
+                                <option value="open_url" ${b.action === 'open_url' ? 'selected' : ''}>Open URL</option>
+                                <option value="talk_to_agent" ${b.action === 'talk_to_agent' ? 'selected' : ''}>Live agent</option>
+                            </select>
+                            <input type="text" class="form-input quick-card-btn-value" value="${escapeHtml(b.value || '')}" placeholder="Message or URL">
+                            <button type="button" class="quick-card-btn-remove" title="Remove button">×</button>
+                        </div>
+                    `).join('')}
+                </div>
+                <button type="button" class="btn btn-sm btn-secondary quick-card-add-btn">+ Add button</button>
+            </div>
+            ` : ''}
         `;
-        
+
         // Event listeners
         item.querySelector('.quick-prompt-icon-input').addEventListener('change', (e) => {
             quickPromptsState.prompts[index].icon = e.target.value;
         });
-        
+
         item.querySelector('.quick-prompt-text-input').addEventListener('change', (e) => {
             quickPromptsState.prompts[index].text = e.target.value;
         });
-        
+
+        item.querySelector('.quick-prompt-type-select').addEventListener('change', (e) => {
+            quickPromptsState.prompts[index].type = e.target.value;
+            if (e.target.value === 'card' && !Array.isArray(quickPromptsState.prompts[index].buttons)) {
+                quickPromptsState.prompts[index].buttons = [];
+            }
+            renderQuickPromptsList();
+        });
+
         item.querySelector('.quick-prompt-enabled').addEventListener('change', (e) => {
             quickPromptsState.prompts[index].enabled = e.target.checked;
         });
-        
+
         item.querySelector('.quick-prompt-move-up').addEventListener('click', () => {
             moveQuickPrompt(index, -1);
         });
-        
+
         item.querySelector('.quick-prompt-move-down').addEventListener('click', () => {
             moveQuickPrompt(index, 1);
         });
-        
+
         item.querySelector('.quick-prompt-delete').addEventListener('click', () => {
             deleteQuickPrompt(index);
         });
-        
+
+        if (isCard) {
+            item.querySelector('.quick-card-desc')?.addEventListener('change', (e) => {
+                quickPromptsState.prompts[index].description = e.target.value;
+            });
+            item.querySelector('.quick-card-image')?.addEventListener('change', (e) => {
+                quickPromptsState.prompts[index].image_url = e.target.value;
+            });
+            item.querySelector('.quick-card-add-btn')?.addEventListener('click', () => {
+                if (!Array.isArray(quickPromptsState.prompts[index].buttons)) {
+                    quickPromptsState.prompts[index].buttons = [];
+                }
+                quickPromptsState.prompts[index].buttons.push({ label: '', action: 'send_message', value: '' });
+                renderQuickPromptsList();
+            });
+            item.querySelectorAll('.quick-card-button-row').forEach(row => {
+                const bi = parseInt(row.dataset.btnIndex);
+                row.querySelector('.quick-card-btn-label')?.addEventListener('change', (e) => {
+                    quickPromptsState.prompts[index].buttons[bi].label = e.target.value;
+                });
+                row.querySelector('.quick-card-btn-action')?.addEventListener('change', (e) => {
+                    quickPromptsState.prompts[index].buttons[bi].action = e.target.value;
+                });
+                row.querySelector('.quick-card-btn-value')?.addEventListener('change', (e) => {
+                    quickPromptsState.prompts[index].buttons[bi].value = e.target.value;
+                });
+                row.querySelector('.quick-card-btn-remove')?.addEventListener('click', () => {
+                    quickPromptsState.prompts[index].buttons.splice(bi, 1);
+                    renderQuickPromptsList();
+                });
+            });
+        }
+
         listEl.appendChild(item);
     });
 }
 
-function addQuickPromptRow() {
+function addQuickPromptRow(type = 'suggestion') {
     const newPrompt = {
         id: Math.random().toString(36).substring(2, 10),
+        type,
         text: '',
         icon: '',
-        enabled: true
+        enabled: true,
+        ...(type === 'card' ? { description: '', image_url: '', buttons: [{ label: '', action: 'send_message', value: '' }] } : {})
     };
     
     quickPromptsState.prompts.push(newPrompt);
@@ -4642,8 +5889,20 @@ function deleteQuickPrompt(index) {
 async function saveQuickPrompts() {
     if (!currentDetailSite) return;
     
-    // Validate prompts - remove empty ones
-    const validPrompts = quickPromptsState.prompts.filter(p => p.text && p.text.trim());
+    // Validate prompts - remove empty ones and empty card buttons
+    const validPrompts = quickPromptsState.prompts
+        .filter(p => p.text && p.text.trim())
+        .map(p => {
+            if ((p.type || 'suggestion') === 'card') {
+                return {
+                    ...p,
+                    type: 'card',
+                    buttons: (Array.isArray(p.buttons) ? p.buttons : []).filter(b => b.label && b.label.trim())
+                };
+            }
+            const { description, image_url, buttons, ...rest } = p;
+            return { ...rest, type: 'suggestion' };
+        });
     
     const btn = document.getElementById('save-quick-prompts');
     const originalText = btn.innerHTML;
@@ -4692,6 +5951,902 @@ async function saveQuickPrompts() {
         setTimeout(() => {
             btn.innerHTML = originalText;
         }, 2000);
+    }
+}
+
+// ==================== Help Center ====================
+
+let helpCenterStatus = null;
+
+function getHelpCenterTabContent() {
+    const config = currentSiteConfig || {};
+    const hc = config.help_center || {};
+    const enabled = hc.enabled === true;
+    const portalUrl = hc.portal_url || '';
+    const tabLabel = hc.tab_label || 'Help';
+    const siteId = currentDetailSite ? currentDetailSite.site_id : '';
+    const siteName = currentDetailSite ? (currentDetailSite.name || '') : '';
+    const portalName = hc.portal_name || siteName;
+    const headerText = hc.header_text || 'Support Portal';
+    const portalTitle = hc.portal_title || (siteName ? `${siteName} | Help Center` : 'Help Center');
+    const homePageLink = hc.home_page_link || '';
+    const slug = hc.slug || '';
+    const brandColor = hc.brand_color || '#7B3DFB';
+    const logoUrl = hc.logo_url || '';
+    const layout = hc.layout || 'documentation';
+    const socialLinks = Array.isArray(hc.social_links) ? hc.social_links : [];
+    const embedWidget = hc.embed_widget !== false;
+
+    const socialNetworks = ['linkedin', 'twitter', 'facebook', 'github', 'youtube', 'website'];
+    const socialRows = socialLinks.map((l, i) => helpCenterSocialRowHtml(l, i, socialNetworks)).join('');
+    const locales = Array.isArray(hc.locales) && hc.locales.length ? hc.locales : [hc.default_locale || 'en'];
+    const localeRows = locales.map((l, i) => helpCenterLocaleRowHtml(l, i === 0)).join('');
+
+    return `
+        <div class="settings-section">
+            <div class="quick-prompts-header">
+                <div>
+                    <h3>Help Center</h3>
+                    <p class="quick-prompts-description">A public knowledge-base portal hosted by SwiftChat — also browsable inside the chat widget's Help tab.</p>
+                </div>
+                <label class="toggle-label">
+                    <input type="checkbox" id="help-center-enabled" ${enabled ? 'checked' : ''}>
+                    <span class="toggle-switch"></span>
+                </label>
+            </div>
+            <div id="help-center-content" style="${enabled ? '' : 'opacity: 0.5; pointer-events: none;'}">
+
+                <div class="appearance-subsection">
+                    <div class="appearance-subsection-title">General</div>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="hc-logo-url">Logo</label>
+                            <div class="avatar-input-row">
+                                <input type="url" id="hc-logo-url" class="form-input" value="${escapeHtml(logoUrl)}" placeholder="https://…/logo.png">
+                                <span class="avatar-preview" id="hc-logo-preview">${logoUrl ? `<img src="${escapeHtml(logoUrl)}" alt="">` : ''}</span>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="hc-portal-name">Name</label>
+                            <input type="text" id="hc-portal-name" class="form-input" value="${escapeHtml(portalName)}" placeholder="Concha AI">
+                        </div>
+                        <div class="form-group">
+                            <label for="hc-header-text">Header text</label>
+                            <input type="text" id="hc-header-text" class="form-input" value="${escapeHtml(headerText)}" placeholder="Support Portal">
+                            <small class="form-help">Heading shown at the top of the portal home page.</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="hc-portal-title">Page title</label>
+                            <input type="text" id="hc-portal-title" class="form-input" value="${escapeHtml(portalTitle)}" placeholder="Concha AI | Help Center">
+                            <small class="form-help">Shown in the browser tab.</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="hc-home-page-link">Home page link</label>
+                            <input type="url" id="hc-home-page-link" class="form-input" value="${escapeHtml(homePageLink)}" placeholder="https://yourwebsite.com">
+                            <small class="form-help">Adds a "Website" link to the portal header.</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="hc-slug">Slug</label>
+                            <input type="text" id="hc-slug" class="form-input" value="${escapeHtml(slug)}" placeholder="${escapeHtml(siteId)}" pattern="[a-z0-9-]*">
+                            <small class="form-help">Custom public path — <code>${window.location.origin}/hc/<strong id="hc-slug-preview">${escapeHtml(slug || siteId)}</strong></code>. Leave empty to use the site ID.</small>
+                        </div>
+                        <div class="form-group">
+                            <label>Languages</label>
+                            <div id="hc-locales">${localeRows}</div>
+                            <button type="button" class="btn btn-secondary btn-sm" id="hc-add-locale">+ Add language</button>
+                            <small class="form-help">The first language is the portal default. Sync each language's portal URL (e.g. <code>…/en</code>) separately — visitors can switch with the language dropdown in the portal header.</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="hc-brand-color">Brand color</label>
+                            <div class="color-input-wrapper">
+                                <input type="color" class="color-input" id="hc-brand-color-picker" value="${escapeHtml(brandColor)}">
+                                <input type="text" class="form-input color-text-input" id="hc-brand-color" value="${escapeHtml(brandColor)}" placeholder="#7B3DFB" maxlength="7">
+                            </div>
+                            <small class="form-help">Used for links, buttons and highlights across the portal.</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="appearance-subsection">
+                    <div class="appearance-subsection-title">Appearance</div>
+                    <div class="form-group">
+                        <label>Layout</label>
+                        <div class="launcher-style-grid hc-layout-grid" id="hc-layout-options">
+                            <label class="launcher-style-option ${layout === 'classic' ? 'selected' : ''}">
+                                <input type="radio" name="hc-layout" value="classic" ${layout === 'classic' ? 'checked' : ''} hidden>
+                                <span class="launcher-style-icon">
+                                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="6" rx="1.5"/><rect x="3" y="12" width="8" height="9" rx="1.5"/><rect x="13" y="12" width="8" height="9" rx="1.5"/></svg>
+                                </span>
+                                <span class="launcher-style-name">Classic</span>
+                            </label>
+                            <label class="launcher-style-option ${layout !== 'classic' ? 'selected' : ''}">
+                                <input type="radio" name="hc-layout" value="documentation" ${layout !== 'classic' ? 'checked' : ''} hidden>
+                                <span class="launcher-style-icon">
+                                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="6" height="18" rx="1.5"/><rect x="12" y="3" width="9" height="6" rx="1.5"/><rect x="12" y="12" width="9" height="9" rx="1.5"/></svg>
+                                </span>
+                                <span class="launcher-style-name">Documentation <em>(Beta)</em></span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Social links</label>
+                        <div id="hc-social-links">${socialRows}</div>
+                        <button type="button" class="btn btn-secondary btn-sm" id="hc-add-social">+ Add social link</button>
+                        <small class="form-help">Shown in the portal footer.</small>
+                    </div>
+                </div>
+
+                <div class="appearance-subsection">
+                    <div class="appearance-subsection-title">Content</div>
+                    <div class="hc-content-toolbar">
+                        <button type="button" class="btn btn-secondary btn-sm" id="hc-new-category">+ New category</button>
+                        <button type="button" class="btn btn-secondary btn-sm" id="hc-new-article">+ New article</button>
+                        <button type="button" class="btn btn-secondary btn-sm" id="hc-refresh-content" title="Reload">↻</button>
+                    </div>
+                    <div id="hc-content-list" class="hc-content-list">
+                        <div class="quick-prompts-loading"><div class="spinner-sm"></div><span>Loading content…</span></div>
+                    </div>
+                </div>
+
+                <div class="appearance-subsection">
+                    <div class="appearance-subsection-title">Custom domain</div>
+                    <div class="form-group">
+                        <label for="hc-custom-domain">Domain</label>
+                        <div class="portal-url-row">
+                            <input type="text" id="hc-custom-domain" class="form-input" value="${escapeHtml(hc.custom_domain || '')}" placeholder="help.example.com">
+                            <button type="button" class="btn btn-secondary btn-sm" id="hc-verify-domain">Verify</button>
+                            <span id="hc-domain-status" class="hc-domain-status"></span>
+                        </div>
+                        <small class="form-help">
+                            Create a <strong>CNAME</strong> record pointing <code id="hc-domain-cname-hint">help.example.com</code> to <code>${escapeHtml(window.location.hostname)}</code>, then click Verify.
+                            The help center will be served at the domain root. Save changes before verifying.
+                        </small>
+                    </div>
+                </div>
+
+                <div class="appearance-subsection">
+                    <div class="appearance-subsection-title">Integrations</div>
+                    <div class="hc-integration-row">
+                        <div>
+                            <div class="hc-integration-name">Live chat with SwiftChat</div>
+                            <div class="hc-integration-desc">Show a live chat widget on your help center.</div>
+                        </div>
+                        <label class="toggle-label">
+                            <input type="checkbox" id="hc-embed-widget" ${embedWidget ? 'checked' : ''}>
+                            <span class="toggle-switch"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="appearance-subsection">
+                    <div class="appearance-subsection-title">Content &amp; Widget</div>
+                    <div class="form-group">
+                        <label>Public portal</label>
+                        <div class="portal-url-row">
+                            <input type="text" class="form-input" id="help-center-public-url" readonly
+                                value="${window.location.origin}/hc/${escapeHtml(slug || siteId)}">
+                            <button type="button" class="btn btn-secondary btn-sm" id="copy-portal-url">Copy</button>
+                            <a class="btn btn-secondary btn-sm" id="open-portal-url" target="_blank" rel="noopener noreferrer">Open</a>
+                        </div>
+                        <small class="form-help">Your SwiftChat-hosted help portal — share this link or let visitors open it from the widget's Help tab.</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="help-center-portal-url">Source portal URL</label>
+                        <input type="url" id="help-center-portal-url" class="form-input" value="${escapeHtml(portalUrl)}"
+                            placeholder="https://chat.swiftapps.cloud/hc/concha-ai/en">
+                        <small class="form-help">The external Chatwoot-style portal to sync categories and articles from.</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="help-center-tab-label">Widget tab label</label>
+                        <input type="text" id="help-center-tab-label" class="form-input" value="${escapeHtml(tabLabel)}" maxlength="20" placeholder="Help">
+                    </div>
+                    <div class="help-center-status" id="help-center-status">
+                        <div class="quick-prompts-loading"><div class="spinner-sm"></div><span>Checking sync status...</span></div>
+                    </div>
+                </div>
+
+                <div class="help-center-actions">
+                    <button type="button" class="btn btn-primary btn-sm" id="save-help-center">Save Changes</button>
+                    <button type="button" class="btn btn-secondary btn-sm" id="sync-help-center">Sync Now</button>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+const HC_LOCALES = {
+    en: 'English', pt: 'Português', 'pt-br': 'Português (Brasil)', es: 'Español',
+    fr: 'Français', de: 'Deutsch', it: 'Italiano', nl: 'Nederlands', pl: 'Polski',
+    tr: 'Türkçe', ar: 'العربية', ja: '日本語', zh: '中文', 'zh-cn': '中文 (简体)',
+    hi: 'हिन्दी', ru: 'Русский', ko: '한국어', sv: 'Svenska', da: 'Dansk'
+};
+
+function helpCenterLocaleRowHtml(code, isDefault) {
+    const opts = Object.entries(HC_LOCALES).map(([c, name]) =>
+        `<option value="${c}" ${code === c ? 'selected' : ''}>${name}</option>`
+    ).join('');
+    return `
+        <div class="hc-social-row hc-locale-row">
+            <select class="form-input hc-locale-select">${opts}</select>
+            ${isDefault
+                ? '<span class="hc-locale-default">Default</span>'
+                : '<button type="button" class="btn-icon hc-locale-remove" title="Remove">×</button>'}
+        </div>
+    `;
+}
+
+function helpCenterSocialRowHtml(link, i, networks) {
+    const opts = networks.map(n =>
+        `<option value="${n}" ${link.network === n ? 'selected' : ''}>${n === 'twitter' ? 'X / Twitter' : n.charAt(0).toUpperCase() + n.slice(1)}</option>`
+    ).join('');
+    return `
+        <div class="hc-social-row" data-index="${i}">
+            <select class="form-input hc-social-network">${opts}</select>
+            <input type="text" class="form-input hc-social-handle" value="${escapeHtml(link.handle || '')}" placeholder="handle or URL">
+            <button type="button" class="btn-icon hc-social-remove" title="Remove">×</button>
+        </div>
+    `;
+}
+
+function initHelpCenterHandlers() {
+    document.getElementById('help-center-enabled')?.addEventListener('change', (e) => {
+        const content = document.getElementById('help-center-content');
+        if (content) {
+            content.style.opacity = e.target.checked ? '1' : '0.5';
+            content.style.pointerEvents = e.target.checked ? 'auto' : 'none';
+        }
+    });
+    document.getElementById('save-help-center')?.addEventListener('click', saveHelpCenterConfig);
+    document.getElementById('sync-help-center')?.addEventListener('click', syncHelpCenter);
+
+    const fallbackSlug = currentDetailSite ? currentDetailSite.site_id : '';
+    const publicUrlEl = document.getElementById('help-center-public-url');
+    const openBtn = document.getElementById('open-portal-url');
+    const slugInput = document.getElementById('hc-slug');
+    const slugPreview = document.getElementById('hc-slug-preview');
+    const refreshPortalUrl = () => {
+        const slug = (slugInput?.value.trim() || fallbackSlug);
+        if (publicUrlEl) publicUrlEl.value = `${window.location.origin}/hc/${slug}`;
+        if (openBtn) openBtn.href = `${window.location.origin}/hc/${slug}`;
+        if (slugPreview) slugPreview.textContent = slug;
+    };
+    slugInput?.addEventListener('input', refreshPortalUrl);
+    refreshPortalUrl();
+
+    const logoInput = document.getElementById('hc-logo-url');
+    const logoPreview = document.getElementById('hc-logo-preview');
+    logoInput?.addEventListener('input', () => {
+        const url = logoInput.value.trim();
+        if (logoPreview) logoPreview.innerHTML = url ? `<img src="${escapeHtml(url)}" alt="">` : '';
+    });
+
+    const colorPicker = document.getElementById('hc-brand-color-picker');
+    const colorText = document.getElementById('hc-brand-color');
+    colorPicker?.addEventListener('input', () => { if (colorText) colorText.value = colorPicker.value; });
+    colorText?.addEventListener('input', () => {
+        if (colorPicker && /^#[0-9a-fA-F]{6}$/.test(colorText.value)) colorPicker.value = colorText.value;
+    });
+
+    document.getElementById('hc-layout-options')?.addEventListener('change', (e) => {
+        if (e.target.name !== 'hc-layout') return;
+        document.querySelectorAll('#hc-layout-options .launcher-style-option').forEach(o => o.classList.remove('selected'));
+        e.target.closest('.launcher-style-option')?.classList.add('selected');
+    });
+
+    const networks = ['linkedin', 'twitter', 'facebook', 'github', 'youtube', 'website'];
+    const socialWrap = document.getElementById('hc-social-links');
+    document.getElementById('hc-add-social')?.addEventListener('click', () => {
+        if (!socialWrap) return;
+        const div = document.createElement('div');
+        div.innerHTML = helpCenterSocialRowHtml({ network: 'linkedin', handle: '' }, socialWrap.children.length, networks).trim();
+        socialWrap.appendChild(div.firstChild);
+    });
+    socialWrap?.addEventListener('click', (e) => {
+        const btn = e.target.closest('.hc-social-remove');
+        if (btn) btn.closest('.hc-social-row')?.remove();
+    });
+
+    const localeWrap = document.getElementById('hc-locales');
+    document.getElementById('hc-add-locale')?.addEventListener('click', () => {
+        if (!localeWrap) return;
+        const div = document.createElement('div');
+        div.innerHTML = helpCenterLocaleRowHtml('pt', false).trim();
+        localeWrap.appendChild(div.firstChild);
+    });
+    localeWrap?.addEventListener('click', (e) => {
+        const btn = e.target.closest('.hc-locale-remove');
+        if (btn) btn.closest('.hc-locale-row')?.remove();
+    });
+
+    document.getElementById('hc-new-category')?.addEventListener('click', () => hcOpenCategoryModal());
+    document.getElementById('hc-new-article')?.addEventListener('click', () => hcOpenArticleModal());
+    document.getElementById('hc-refresh-content')?.addEventListener('click', loadHelpCenterContent);
+    document.getElementById('hc-verify-domain')?.addEventListener('click', hcVerifyDomain);
+    document.getElementById('hc-custom-domain')?.addEventListener('input', e => {
+        const hint = document.getElementById('hc-domain-cname-hint');
+        if (hint) hint.textContent = e.target.value.trim() || 'help.example.com';
+    });
+
+    document.getElementById('hc-content-list')?.addEventListener('click', e => {
+        const row = e.target.closest('.hc-manage-row');
+        if (!row) return;
+        const catSlug = row.dataset.catSlug, catLocale = row.dataset.catLocale;
+        const artSlug = row.dataset.artSlug, artLocale = row.dataset.artLocale;
+        if (e.target.closest('.hc-edit-cat')) {
+            const cat = (hcContent.categories || []).find(c => c.slug === catSlug && (c.locale || 'en') === catLocale);
+            if (cat) hcOpenCategoryModal(cat);
+        } else if (e.target.closest('.hc-del-cat')) {
+            const cat = (hcContent.categories || []).find(c => c.slug === catSlug && (c.locale || 'en') === catLocale);
+            if (cat && confirm(`Delete category "${cat.name}"? Its articles become uncategorised.`)) {
+                fetch(`${API_BASE}/sites/${currentDetailSite.site_id}/help/categories/${encodeURIComponent(catSlug)}?locale=${encodeURIComponent(catLocale)}`, {
+                    method: 'DELETE', headers: getAuthHeaders()
+                }).then(() => { loadHelpCenterContent(); loadHelpCenterStatus(); });
+            }
+        } else if (e.target.closest('.hc-edit-art')) {
+            const art = (hcContent.articles || []).find(a => a.slug === artSlug && (a.locale || 'en') === artLocale);
+            if (art) hcOpenArticleModal(art);
+        } else if (e.target.closest('.hc-del-art')) {
+            const art = (hcContent.articles || []).find(a => a.slug === artSlug && (a.locale || 'en') === artLocale);
+            if (art && confirm(`Delete article "${art.title}"?`)) {
+                fetch(`${API_BASE}/sites/${currentDetailSite.site_id}/help/articles/${encodeURIComponent(artSlug)}?locale=${encodeURIComponent(artLocale)}`, {
+                    method: 'DELETE', headers: getAuthHeaders()
+                }).then(() => { loadHelpCenterContent(); loadHelpCenterStatus(); });
+            }
+        }
+    });
+
+    document.getElementById('copy-portal-url')?.addEventListener('click', async () => {
+        try {
+            await navigator.clipboard.writeText(publicUrlEl.value);
+            const btn = document.getElementById('copy-portal-url');
+            btn.textContent = 'Copied!';
+            setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+        } catch (e) {
+            publicUrlEl.select();
+            document.execCommand('copy');
+        }
+    });
+}
+
+async function loadHelpCenterStatus() {
+    const statusEl = document.getElementById('help-center-status');
+    if (!statusEl || !currentDetailSite) return;
+    try {
+        const response = await fetch(`${API_BASE}/sites/${currentDetailSite.site_id}/help/status`, {
+            headers: getAuthHeaders()
+        });
+        if (!response.ok) throw new Error('status fetch failed');
+        helpCenterStatus = await response.json();
+        const s = helpCenterStatus.last_sync_stats;
+        statusEl.innerHTML = `
+            <div class="help-center-stats">
+                <span><strong>${helpCenterStatus.categories}</strong> categories</span>
+                <span><strong>${helpCenterStatus.articles}</strong> articles</span>
+                ${helpCenterStatus.last_synced_at ? `<span>Last synced: ${new Date(helpCenterStatus.last_synced_at).toLocaleString()}</span>` : '<span>Never synced</span>'}
+                ${s && s.errors ? `<span class="help-center-errors">${s.errors} errors</span>` : ''}
+            </div>
+        `;
+    } catch (e) {
+        statusEl.innerHTML = '<div class="help-center-stats"><span>Status unavailable</span></div>';
+    }
+}
+
+async function saveHelpCenterConfig() {
+    if (!currentDetailSite) return;
+    const btn = document.getElementById('save-help-center');
+    const original = btn.innerHTML;
+    btn.textContent = 'Saving...';
+    btn.disabled = true;
+    const helpCenter = {
+        enabled: document.getElementById('help-center-enabled')?.checked === true,
+        portal_url: document.getElementById('help-center-portal-url')?.value.trim() || null,
+        tab_label: document.getElementById('help-center-tab-label')?.value.trim() || 'Help',
+        portal_name: document.getElementById('hc-portal-name')?.value.trim() || null,
+        header_text: document.getElementById('hc-header-text')?.value.trim() || null,
+        portal_title: document.getElementById('hc-portal-title')?.value.trim() || null,
+        home_page_link: document.getElementById('hc-home-page-link')?.value.trim() || null,
+        slug: document.getElementById('hc-slug')?.value.trim().toLowerCase() || null,
+        brand_color: document.getElementById('hc-brand-color')?.value.trim() || null,
+        logo_url: document.getElementById('hc-logo-url')?.value.trim() || null,
+        layout: document.querySelector('input[name="hc-layout"]:checked')?.value || 'documentation',
+        social_links: [...document.querySelectorAll('#hc-social-links .hc-social-row')].map(row => ({
+            network: row.querySelector('.hc-social-network')?.value || 'website',
+            handle: row.querySelector('.hc-social-handle')?.value.trim() || ''
+        })).filter(l => l.handle),
+        embed_widget: document.getElementById('hc-embed-widget')?.checked !== false,
+        custom_domain: document.getElementById('hc-custom-domain')?.value.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '') || null
+    };
+    const locales = [...document.querySelectorAll('#hc-locales .hc-locale-select')]
+        .map(s => s.value).filter((v, i, arr) => arr.indexOf(v) === i);
+    helpCenter.locales = locales.length ? locales : ['en'];
+    helpCenter.default_locale = helpCenter.locales[0];
+    try {
+        const response = await fetch(`${API_BASE}/sites/${currentDetailSite.site_id}/config`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ help_center: helpCenter })
+        });
+        if (!response.ok) throw new Error('Failed to save');
+        currentSiteConfig = await response.json();
+        btn.textContent = 'Saved!';
+        setTimeout(() => { btn.innerHTML = original; btn.disabled = false; }, 1500);
+    } catch (e) {
+        console.error('Failed to save help center config:', e);
+        btn.textContent = 'Error - Try Again';
+        btn.disabled = false;
+        setTimeout(() => { btn.innerHTML = original; }, 2000);
+    }
+}
+
+async function syncHelpCenter() {
+    if (!currentDetailSite) return;
+    // Save config first so the sync uses the latest portal URL
+    await saveHelpCenterConfig();
+    const btn = document.getElementById('sync-help-center');
+    const original = btn.innerHTML;
+    btn.textContent = 'Syncing...';
+    btn.disabled = true;
+    try {
+        const response = await fetch(`${API_BASE}/sites/${currentDetailSite.site_id}/help/sync`, {
+            method: 'POST',
+            headers: getAuthHeaders()
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.detail || 'Sync failed');
+        }
+        btn.textContent = 'Sync started';
+        // Poll status until counts change or timeout
+        const start = Date.now();
+        const poll = setInterval(async () => {
+            await loadHelpCenterStatus();
+            if (Date.now() - start > 120000) {
+                clearInterval(poll);
+                btn.innerHTML = original;
+                btn.disabled = false;
+            }
+        }, 4000);
+        setTimeout(() => { clearInterval(poll); btn.innerHTML = original; btn.disabled = false; }, 120000);
+    } catch (e) {
+        console.error('Help center sync failed:', e);
+        btn.textContent = 'Sync failed';
+        setTimeout(() => { btn.innerHTML = original; btn.disabled = false; }, 3000);
+    }
+}
+
+// ==================== Help Center content management ====================
+
+let hcContent = { categories: [], articles: [] };
+
+function hcLocalesList() {
+    const sel = [...document.querySelectorAll('#hc-locales .hc-locale-select')].map(s => s.value);
+    if (sel.length) return sel;
+    return (currentSiteConfig?.help_center?.locales) || ['en'];
+}
+
+async function loadHelpCenterContent() {
+    const listEl = document.getElementById('hc-content-list');
+    if (!listEl || !currentDetailSite) return;
+    try {
+        const res = await fetch(`${API_BASE}/sites/${currentDetailSite.site_id}/help/manage`, {
+            headers: getAuthHeaders()
+        });
+        if (!res.ok) throw new Error('load failed');
+        hcContent = await res.json();
+    } catch (e) {
+        hcContent = { categories: [], articles: [] };
+    }
+    renderHcContentList();
+}
+
+function hcIconHtml(cat, size = 18) {
+    if (cat.icon_url) return `<img src="${escapeHtml(cat.icon_url)}" alt="" style="width:${size}px;height:${size}px;object-fit:contain;border-radius:4px">`;
+    if (cat.icon) return `<span style="font-size:${size - 2}px;line-height:1">${escapeHtml(cat.icon)}</span>`;
+    return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>`;
+}
+
+function renderHcContentList() {
+    const listEl = document.getElementById('hc-content-list');
+    if (!listEl) return;
+    const cats = hcContent.categories || [];
+    const arts = hcContent.articles || [];
+    const catName = (slug, locale) => (cats.find(c => c.slug === slug && (!locale || c.locale === locale)) || cats.find(c => c.slug === slug) || {}).name || slug || '—';
+
+    listEl.innerHTML = `
+        <div class="hc-manage-group">
+            <div class="hc-manage-head">Categories <span class="hc-manage-count">${cats.length}</span></div>
+            ${cats.length ? cats.map(c => `
+                <div class="hc-manage-row" data-cat-slug="${escapeHtml(c.slug)}" data-cat-locale="${escapeHtml(c.locale || 'en')}">
+                    <span class="hc-manage-icon">${hcIconHtml(c)}</span>
+                    <span class="hc-manage-title">${escapeHtml(c.name)} <em class="hc-manage-meta">${escapeHtml(c.locale || 'en')} · ${c.article_count || 0} articles</em></span>
+                    <button type="button" class="btn-icon hc-edit-cat" title="Edit category">✎</button>
+                    <button type="button" class="btn-icon hc-del-cat" title="Delete category">×</button>
+                </div>`).join('') : '<div class="hc-manage-empty">No categories yet — sync a portal or create one.</div>'}
+        </div>
+        <div class="hc-manage-group">
+            <div class="hc-manage-head">Articles <span class="hc-manage-count">${arts.length}</span></div>
+            ${arts.length ? arts.map(a => `
+                <div class="hc-manage-row" data-art-slug="${escapeHtml(a.slug)}" data-art-locale="${escapeHtml(a.locale || 'en')}">
+                    <span class="hc-manage-title">${escapeHtml(a.title)} <em class="hc-manage-meta">${escapeHtml(a.locale || 'en')} · ${escapeHtml(catName(a.category_slug, a.locale))}</em></span>
+                    <button type="button" class="btn-icon hc-edit-art" title="Edit article">✎</button>
+                    <button type="button" class="btn-icon hc-del-art" title="Delete article">×</button>
+                </div>`).join('') : '<div class="hc-manage-empty">No articles yet — sync a portal or create one.</div>'}
+        </div>
+    `;
+}
+
+function hcShowModal(title, bodyHtml) {
+    const wrap = document.createElement('div');
+    wrap.className = 'modal-backdrop active';
+    wrap.innerHTML = `
+        <div class="modal modal-lg">
+            <div class="modal-header">
+                <h2>${escapeHtml(title)}</h2>
+                <button class="modal-close" type="button" aria-label="Close">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <div class="qa-modal-content">${bodyHtml}</div>
+        </div>`;
+    const close = () => wrap.remove();
+    wrap.querySelector('.modal-close').addEventListener('click', close);
+    wrap.addEventListener('click', e => { if (e.target === wrap) close(); });
+    document.body.appendChild(wrap);
+    return { el: wrap, close };
+}
+
+function hcLocaleOptions(selected) {
+    return hcLocalesList().map(l =>
+        `<option value="${escapeHtml(l)}" ${l === selected ? 'selected' : ''}>${escapeHtml(HC_LOCALES[l] || l)}</option>`
+    ).join('');
+}
+
+function hcOpenCategoryModal(cat = null) {
+    const editing = !!cat;
+    const { el, close } = hcShowModal(editing ? 'Edit Category' : 'New Category', `
+        <form id="hc-cat-form">
+            <div class="qa-form-group">
+                <label>Name</label>
+                <input type="text" id="hc-cat-name" class="form-input" required maxlength="120" value="${escapeHtml(cat?.name || '')}" placeholder="Getting started">
+            </div>
+            <div class="qa-form-group">
+                <label>Language</label>
+                <select id="hc-cat-locale" class="form-input" ${editing ? 'disabled' : ''}>${hcLocaleOptions(cat?.locale || hcLocalesList()[0])}</select>
+            </div>
+            <div class="qa-form-group">
+                <label>Icon</label>
+                <div class="avatar-input-row">
+                    <input type="text" id="hc-cat-icon" class="form-input" maxlength="8" value="${escapeHtml(cat?.icon || '')}" placeholder="Emoji e.g. 🚀 — or upload an image" style="max-width:200px">
+                    <label class="btn btn-secondary btn-sm" style="cursor:pointer">Upload<input type="file" id="hc-cat-icon-file" accept="image/*" hidden></label>
+                    <span class="avatar-preview" id="hc-cat-icon-preview">${cat?.icon_url ? `<img src="${escapeHtml(cat.icon_url)}" alt="">` : (cat?.icon ? `<span style="font-size:18px">${escapeHtml(cat.icon)}</span>` : '')}</span>
+                    <input type="hidden" id="hc-cat-icon-url" value="${escapeHtml(cat?.icon_url || '')}">
+                </div>
+            </div>
+            <div class="qa-form-group">
+                <label>Description</label>
+                <textarea id="hc-cat-desc" class="form-input" rows="2" maxlength="300" placeholder="Optional short description">${escapeHtml(cat?.description || '')}</textarea>
+            </div>
+            ${editing ? `<div class="qa-form-group"><small class="form-help">Slug: <code>${escapeHtml(cat.slug)}</code></small></div>` : ''}
+            <div class="qa-modal-actions">
+                <button type="button" class="btn btn-secondary" id="hc-cat-cancel">Cancel</button>
+                <button type="submit" class="btn btn-primary">${editing ? 'Save Category' : 'Create Category'}</button>
+            </div>
+        </form>`);
+
+    el.querySelector('#hc-cat-cancel').addEventListener('click', close);
+    const iconInput = el.querySelector('#hc-cat-icon');
+    const preview = el.querySelector('#hc-cat-icon-preview');
+    const urlInput = el.querySelector('#hc-cat-icon-url');
+    iconInput.addEventListener('input', () => {
+        preview.innerHTML = iconInput.value.trim() ? `<span style="font-size:18px">${escapeHtml(iconInput.value.trim())}</span>` : '';
+    });
+    el.querySelector('#hc-cat-icon-file').addEventListener('change', e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+            urlInput.value = reader.result;
+            iconInput.value = '';
+            preview.innerHTML = `<img src="${reader.result}" alt="">`;
+        };
+        reader.readAsDataURL(file);
+    });
+    el.querySelector('#hc-cat-form').addEventListener('submit', async e => {
+        e.preventDefault();
+        const body = {
+            name: el.querySelector('#hc-cat-name').value.trim(),
+            locale: el.querySelector('#hc-cat-locale').value,
+            icon: iconInput.value.trim(),
+            icon_url: urlInput.value || null,
+            description: el.querySelector('#hc-cat-desc').value.trim() || null,
+        };
+        if (!body.name) return;
+        const base = `${API_BASE}/sites/${currentDetailSite.site_id}/help/categories`;
+        const url = editing ? `${base}/${encodeURIComponent(cat.slug)}?locale=${encodeURIComponent(cat.locale || 'en')}` : base;
+        const res = await fetch(url, {
+            method: editing ? 'PUT' : 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(body)
+        });
+        if (!res.ok) { alert('Failed to save category'); return; }
+        close();
+        loadHelpCenterContent();
+        loadHelpCenterStatus();
+    });
+}
+
+function hcOpenArticleModal(art = null) {
+    const editing = !!art;
+    const cats = hcContent.categories || [];
+    const artLocale = art?.locale || hcLocalesList()[0];
+    const catOptions = locale =>
+        '<option value="">— No category —</option>' +
+        cats.filter(c => !c.locale || c.locale === locale).map(c =>
+            `<option value="${escapeHtml(c.slug)}" ${c.slug === art?.category_slug ? 'selected' : ''}>${escapeHtml(c.name)}</option>`
+        ).join('');
+
+    const { el, close } = hcShowModal(editing ? 'Edit Article' : 'New Article', `
+        <form id="hc-art-form">
+            <div class="qa-form-group">
+                <label>Title</label>
+                <input type="text" id="hc-art-title" class="form-input" required maxlength="200" value="${escapeHtml(art?.title || '')}" placeholder="How to reset your password">
+            </div>
+            <div class="hc-art-row">
+                <div class="qa-form-group">
+                    <label>Category</label>
+                    <select id="hc-art-category" class="form-input">${catOptions(artLocale)}</select>
+                </div>
+                <div class="qa-form-group">
+                    <label>Language</label>
+                    <select id="hc-art-locale" class="form-input" ${editing ? 'disabled' : ''}>${hcLocaleOptions(artLocale)}</select>
+                </div>
+            </div>
+            <div class="qa-form-group">
+                <label>Content <span style="font-weight:400;color:var(--text-muted)">(HTML allowed)</span></label>
+                <textarea id="hc-art-body" class="form-input" rows="12" style="font-family:ui-monospace,monospace;font-size:13px" placeholder="<h2>Overview</h2><p>Write your article here…</p>">${escapeHtml(art?.content_html || '')}</textarea>
+            </div>
+            ${editing ? `<div class="qa-form-group"><small class="form-help">Slug: <code>${escapeHtml(art.slug)}</code></small></div>` : ''}
+            <div class="qa-modal-actions">
+                <button type="button" class="btn btn-secondary" id="hc-art-cancel">Cancel</button>
+                <button type="submit" class="btn btn-primary">${editing ? 'Save Article' : 'Create Article'}</button>
+            </div>
+        </form>`);
+
+    el.querySelector('#hc-art-cancel').addEventListener('click', close);
+    el.querySelector('#hc-art-locale').addEventListener('change', e => {
+        el.querySelector('#hc-art-category').innerHTML = catOptions(e.target.value);
+    });
+    el.querySelector('#hc-art-form').addEventListener('submit', async e => {
+        e.preventDefault();
+        const body = {
+            title: el.querySelector('#hc-art-title').value.trim(),
+            category_slug: el.querySelector('#hc-art-category').value || '',
+            locale: el.querySelector('#hc-art-locale').value,
+            content_html: el.querySelector('#hc-art-body').value,
+        };
+        if (!body.title) return;
+        const base = `${API_BASE}/sites/${currentDetailSite.site_id}/help/articles`;
+        const url = editing ? `${base}/${encodeURIComponent(art.slug)}?locale=${encodeURIComponent(art.locale || 'en')}` : base;
+        const res = await fetch(url, {
+            method: editing ? 'PUT' : 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(body)
+        });
+        if (!res.ok) { alert('Failed to save article'); return; }
+        close();
+        loadHelpCenterContent();
+        loadHelpCenterStatus();
+    });
+}
+
+async function loadHcDomainStatus() {
+    const statusEl = document.getElementById('hc-domain-status');
+    if (!statusEl || !currentDetailSite) return;
+    try {
+        const res = await fetch(`${API_BASE}/sites/${currentDetailSite.site_id}/help/domain/status`, {
+            headers: getAuthHeaders()
+        });
+        if (!res.ok) return;
+        const d = await res.json();
+        renderHcDomainStatus(d);
+    } catch (e) { /* optional */ }
+}
+
+function renderHcDomainStatus(d) {
+    const statusEl = document.getElementById('hc-domain-status');
+    if (!statusEl) return;
+    if (!d.custom_domain) {
+        statusEl.textContent = '';
+        return;
+    }
+    statusEl.textContent = d.verified ? '✓ Verified' : 'DNS not verified';
+    statusEl.className = 'hc-domain-status ' + (d.verified ? 'verified' : 'unverified');
+}
+
+async function hcVerifyDomain() {
+    const btn = document.getElementById('hc-verify-domain');
+    const statusEl = document.getElementById('hc-domain-status');
+    if (!btn || !currentDetailSite) return;
+    btn.textContent = 'Checking…';
+    btn.disabled = true;
+    try {
+        // Save first so the domain being verified is the stored one
+        await saveHelpCenterConfig();
+        const res = await fetch(`${API_BASE}/sites/${currentDetailSite.site_id}/help/domain/verify`, {
+            method: 'POST',
+            headers: getAuthHeaders()
+        });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.detail || 'Verify failed');
+        renderHcDomainStatus({ custom_domain: d.domain, verified: d.verified });
+        if (!d.verified && statusEl) {
+            const cn = (d.records?.cname || []).join(', ') || 'none';
+            const a = (d.records?.a || []).join(', ') || 'none';
+            statusEl.textContent = `DNS not verified — CNAME: ${cn}, A: ${a} (expected ${d.expected || 'this server'})`;
+        }
+    } catch (e) {
+        if (statusEl) {
+            statusEl.textContent = `Verify failed: ${e.message}`;
+            statusEl.className = 'hc-domain-status unverified';
+        }
+    }
+    btn.textContent = 'Verify';
+    btn.disabled = false;
+}
+
+// ==================== Push Notifications (OneSignal) ====================
+
+let notificationsConfig = null;
+let oneSignalReady = null;
+
+function getNotificationsTabContent() {
+    return `
+        <div class="settings-section">
+            <div class="quick-prompts-header">
+                <div>
+                    <h3>Push Notifications</h3>
+                    <p class="quick-prompts-description">Get notified via OneSignal when visitors message you, request a live agent, or leave their details. Account-level keys fall back to server env vars.</p>
+                </div>
+                <label class="toggle-label">
+                    <input type="checkbox" id="notifications-enabled">
+                    <span class="toggle-switch"></span>
+                </label>
+            </div>
+            <div id="notifications-content">
+                <div class="form-group">
+                    <label for="notifications-app-id">OneSignal App ID</label>
+                    <input type="text" id="notifications-app-id" class="form-input" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label for="notifications-rest-key">OneSignal REST API Key <span class="form-help-inline">(stored server-side, never shown)</span></label>
+                    <input type="password" id="notifications-rest-key" class="form-input" placeholder="Leave blank to keep existing key" autocomplete="new-password">
+                </div>
+                <div class="form-group form-checkbox">
+                    <input type="checkbox" id="notifications-new-message" checked>
+                    <label for="notifications-new-message">New visitor message</label>
+                </div>
+                <div class="form-group form-checkbox">
+                    <input type="checkbox" id="notifications-new-lead" checked>
+                    <label for="notifications-new-lead">New lead captured</label>
+                </div>
+                <div class="form-group form-checkbox">
+                    <input type="checkbox" id="notifications-handoff" checked>
+                    <label for="notifications-handoff">Live agent requested</label>
+                </div>
+                <div class="help-center-actions">
+                    <button type="button" class="btn btn-primary btn-sm" id="save-notifications">Save Changes</button>
+                    <button type="button" class="btn btn-secondary btn-sm" id="subscribe-notifications">Subscribe this browser</button>
+                </div>
+                <div class="help-center-stats" id="notifications-status" style="margin-top:12px;">
+                    <span>Checking OneSignal subscription…</span>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function initNotificationsHandlers() {
+    document.getElementById('save-notifications')?.addEventListener('click', saveNotificationsConfig);
+    document.getElementById('subscribe-notifications')?.addEventListener('click', subscribeBrowserPush);
+}
+
+async function loadNotificationsConfig() {
+    if (!currentDetailSite) return;
+    try {
+        const response = await fetch(`${API_BASE}/sites/${currentDetailSite.site_id}/notifications`, {
+            headers: getAuthHeaders()
+        });
+        if (!response.ok) throw new Error('Failed to load');
+        notificationsConfig = await response.json();
+        document.getElementById('notifications-enabled').checked = notificationsConfig.enabled === true;
+        document.getElementById('notifications-app-id').value = notificationsConfig.onesignal_app_id || '';
+        document.getElementById('notifications-rest-key').value = '';
+        document.getElementById('notifications-rest-key').placeholder =
+            notificationsConfig.has_api_key ? 'Key saved (•••• shown)' : 'No key saved — uses env default';
+        document.getElementById('notifications-new-message').checked = notificationsConfig.notify_new_message !== false;
+        document.getElementById('notifications-new-lead').checked = notificationsConfig.notify_new_lead !== false;
+        document.getElementById('notifications-handoff').checked = notificationsConfig.notify_handoff !== false;
+    } catch (e) {
+        console.error('Failed to load notification config:', e);
+    }
+    updateNotificationStatus();
+}
+
+function updateNotificationStatus() {
+    const el = document.getElementById('notifications-status');
+    if (!el) return;
+    const hasAppId = notificationsConfig?.onesignal_app_id;
+    el.innerHTML = `<span>${hasAppId
+        ? 'App ID configured — click "Subscribe this browser" to receive pushes here.'
+        : 'No App ID configured — set one above or via ONESIGNAL_APP_ID env var.'}</span>`;
+}
+
+async function saveNotificationsConfig() {
+    if (!currentDetailSite) return;
+    const btn = document.getElementById('save-notifications');
+    const original = btn.innerHTML;
+    btn.textContent = 'Saving...';
+    btn.disabled = true;
+    const body = {
+        enabled: document.getElementById('notifications-enabled')?.checked === true,
+        onesignal_app_id: document.getElementById('notifications-app-id')?.value.trim() || null,
+        onesignal_rest_api_key: document.getElementById('notifications-rest-key')?.value.trim() || null,
+        notify_new_message: document.getElementById('notifications-new-message')?.checked !== false,
+        notify_new_lead: document.getElementById('notifications-new-lead')?.checked !== false,
+        notify_handoff: document.getElementById('notifications-handoff')?.checked !== false
+    };
+    try {
+        const response = await fetch(`${API_BASE}/sites/${currentDetailSite.site_id}/notifications`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(body)
+        });
+        if (!response.ok) throw new Error('Failed to save');
+        notificationsConfig = await response.json();
+        btn.textContent = 'Saved!';
+        setTimeout(() => { btn.innerHTML = original; btn.disabled = false; }, 1500);
+    } catch (e) {
+        console.error('Failed to save notifications config:', e);
+        btn.textContent = 'Error - Try Again';
+        btn.disabled = false;
+        setTimeout(() => { btn.innerHTML = original; }, 2000);
+    }
+    updateNotificationStatus();
+}
+
+function loadOneSignalSDK() {
+    if (oneSignalReady) return oneSignalReady;
+    oneSignalReady = new Promise((resolve, reject) => {
+        window.OneSignalDeferred = window.OneSignalDeferred || [];
+        window.OneSignalDeferred.push((OneSignal) => resolve(OneSignal));
+        const script = document.createElement('script');
+        script.src = 'https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js';
+        script.defer = true;
+        script.onerror = () => reject(new Error('OneSignal SDK failed to load'));
+        document.head.appendChild(script);
+    });
+    return oneSignalReady;
+}
+
+async function subscribeBrowserPush() {
+    const appId = document.getElementById('notifications-app-id')?.value.trim()
+        || notificationsConfig?.onesignal_app_id;
+    const statusEl = document.getElementById('notifications-status');
+    if (!appId) {
+        statusEl.innerHTML = '<span>Enter a OneSignal App ID first.</span>';
+        return;
+    }
+    statusEl.innerHTML = '<span>Loading OneSignal SDK…</span>';
+    try {
+        const OneSignal = await loadOneSignalSDK();
+        await OneSignal.init({ appId });
+        // Tag this subscription with the site id so pushes can be scoped per channel
+        try { await OneSignal.User.addTag('site_id', currentDetailSite.site_id); } catch (_) {}
+        await OneSignal.Slidedown.promptPush();
+        statusEl.innerHTML = '<span>Browser subscribed to push notifications.</span>';
+    } catch (e) {
+        console.error('OneSignal subscribe failed:', e);
+        statusEl.innerHTML = '<span>Subscription failed — check the App ID and that this site is served over HTTPS.</span>';
     }
 }
 
@@ -6154,6 +8309,27 @@ async function loadHandoffConfig() {
         const config = await response.json();
         
         const enabledEl = document.getElementById('handoff-enabled');
+        const agentStatusEl = document.getElementById('handoff-agent-status');
+        const updateAgentStatus = async () => {
+            if (!agentStatusEl) return;
+            try {
+                const cfgRes = await fetch(`${API_BASE}/sites/${currentDetailSite.site_id}/config`);
+                if (!cfgRes.ok) return;
+                const cfgData = await cfgRes.json();
+                const h = cfgData.handoff || {};
+                const enabled = enabledEl ? enabledEl.checked : h.enabled !== false;
+                if (!h.has_agents) {
+                    agentStatusEl.textContent = 'No human agents are assigned to this site — the Live Agent button is hidden on the widget. Assign agents under Team.';
+                    agentStatusEl.style.color = 'var(--warning, #d97706)';
+                } else if (enabled) {
+                    agentStatusEl.textContent = 'Human agents are assigned — visitors can request a Live Agent.';
+                    agentStatusEl.style.color = 'var(--text-muted, #64748b)';
+                } else {
+                    agentStatusEl.textContent = 'Human agents are disabled — the Live Agent button is hidden on the widget.';
+                    agentStatusEl.style.color = 'var(--text-muted, #64748b)';
+                }
+            } catch (e) { /* status hint is best-effort */ }
+        };
         const thresholdEl = document.getElementById('confidence-threshold');
         const thresholdValue = document.getElementById('confidence-threshold-value');
         const businessHoursEnabled = document.getElementById('business-hours-enabled');
@@ -6161,8 +8337,15 @@ async function loadHandoffConfig() {
         const timezoneEl = document.getElementById('business-timezone');
         const offlineMessageEl = document.getElementById('offline-message');
         
-        if (enabledEl) enabledEl.checked = config.enabled !== false;
-        
+        if (enabledEl) {
+            enabledEl.checked = config.enabled !== false;
+            if (!enabledEl.dataset.statusBound) {
+                enabledEl.dataset.statusBound = '1';
+                enabledEl.addEventListener('change', updateAgentStatus);
+            }
+        }
+        await updateAgentStatus();
+
         if (thresholdEl && thresholdValue) {
             const threshold = Math.round((config.confidence_threshold || 0.3) * 100);
             thresholdEl.value = threshold;
@@ -6573,9 +8756,9 @@ async function loadWhiteLabelConfig() {
 
 function populateWhiteLabelForm(config) {
     const fields = {
-        'wl-app-name': config.app_name || 'SiteChat',
-        'wl-primary-color': config.primary_color || '#0D9488',
-        'wl-primary-color-text': config.primary_color || '#0D9488',
+        'wl-app-name': config.app_name || 'SwiftChat',
+        'wl-primary-color': config.primary_color || '#7B3DFB',
+        'wl-primary-color-text': config.primary_color || '#7B3DFB',
         'wl-logo-url': config.logo_url || '',
     };
 
@@ -6588,7 +8771,7 @@ function populateWhiteLabelForm(config) {
 function applyWhiteLabelBranding(config) {
     if (!config) return;
     
-    if (config.app_name && config.app_name !== 'SiteChat') {
+    if (config.app_name && config.app_name !== 'SwiftChat') {
         document.title = config.app_name;
         const brandName = document.querySelector('.brand-name');
         if (brandName) brandName.textContent = config.app_name;
@@ -6601,7 +8784,11 @@ function applyWhiteLabelBranding(config) {
     if (config.logo_url) {
         const brandIcon = document.querySelector('.brand-icon');
         if (brandIcon) {
-            brandIcon.innerHTML = `<img src="${config.logo_url}" alt="Logo" style="width: 24px; height: 24px; object-fit: contain;">`;
+            brandIcon.innerHTML = `<img src="${config.logo_url}" alt="Logo">`;
+        }
+        const mobileBrandIcon = document.querySelector('.mobile-brand-icon');
+        if (mobileBrandIcon) {
+            mobileBrandIcon.innerHTML = `<img src="${config.logo_url}" alt="Logo">`;
         }
     }
     
@@ -6624,8 +8811,8 @@ async function saveWhiteLabelConfig() {
     
     try {
         const config = {
-            app_name: document.getElementById('wl-app-name')?.value || 'SiteChat',
-            primary_color: document.getElementById('wl-primary-color')?.value || '#0D9488',
+            app_name: document.getElementById('wl-app-name')?.value || 'SwiftChat',
+            primary_color: document.getElementById('wl-primary-color')?.value || '#7B3DFB',
             logo_url: document.getElementById('wl-logo-url')?.value || null,
         };
         
@@ -6751,6 +8938,16 @@ function initProfileSettings() {
     if (nameEl && currentUser?.name) nameEl.value = currentUser.name;
     if (emailEl && currentUser?.email) emailEl.value = currentUser.email;
 
+    const avatarEl = document.getElementById('profile-avatar-url');
+    const avatarPreview = document.getElementById('profile-avatar-preview');
+    const renderAvatarPreview = () => {
+        const url = avatarEl?.value.trim();
+        if (avatarPreview) avatarPreview.innerHTML = url ? `<img src="${escapeHtml(url)}" alt="">` : '';
+    };
+    if (avatarEl && currentUser?.avatar_url) avatarEl.value = currentUser.avatar_url;
+    renderAvatarPreview();
+    avatarEl?.addEventListener('input', renderAvatarPreview);
+
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
         const errEl = document.getElementById('profile-error');
@@ -6765,6 +8962,8 @@ function initProfileSettings() {
 
         const body = {};
         if (name && name !== currentUser?.name) body.name = name;
+        const avatarUrl = avatarEl?.value?.trim() || '';
+        if (avatarUrl !== (currentUser?.avatar_url || '')) body.avatar_url = avatarUrl;
         if (newPw) {
             if (!currentUser?.must_change_password) {
                 body.current_password = currentPw;
@@ -6794,10 +8993,8 @@ function initProfileSettings() {
             }
             // Update currentUser in memory and sidebar display
             currentUser = { ...currentUser, ...data };
-            if (data.name) {
-                document.getElementById('user-name').textContent = data.name;
-                document.getElementById('user-avatar').textContent = avatarInitials(data.name);
-            }
+            localStorage.setItem('user', JSON.stringify(currentUser));
+            updateUserUI();
             // Clear password fields
             document.getElementById('profile-current-password').value = '';
             document.getElementById('profile-new-password').value = '';
@@ -6896,7 +9093,7 @@ function loadActiveTab() {
 }
 
 // ----- Avatar helpers -----
-const AVATAR_COLORS = ['#0d9488','#3b82f6','#8b5cf6','#f97316','#10b981','#f59e0b','#ef4444','#06b6d4'];
+const AVATAR_COLORS = ['#7B3DFB','#3b82f6','#8b5cf6','#f97316','#10b981','#f59e0b','#ef4444','#06b6d4'];
 function avatarColor(str) {
     let h = 0;
     for (let i = 0; i < str.length; i++) h = str.charCodeAt(i) + ((h << 5) - h);
@@ -8087,6 +10284,74 @@ function renderTrainingTab() {
     
     container.innerHTML = `
         <div class="tab-form training-tab">
+            <!-- Knowledge sources -->
+            <div class="config-section knowledge-sources" id="knowledge-sources">
+                <div class="config-section-body">
+                    <h4 class="knowledge-title">Knowledge Sources</h4>
+                    <p class="knowledge-sub">Content the AI uses to answer — webpages, files, text blocks and business info are all indexed for retrieval.</p>
+
+                    <div class="knowledge-block">
+                        <div class="knowledge-block-head">
+                            <div class="knowledge-block-label">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
+                                Webpages
+                            </div>
+                            <button type="button" class="btn btn-secondary btn-sm" id="knowledge-add-url-btn">+ Add URL</button>
+                        </div>
+                        <div class="knowledge-add-url-form" id="knowledge-add-url-form" style="display:none">
+                            <input type="text" id="knowledge-new-url" class="form-input" placeholder="https://example.com/docs">
+                            <input type="number" id="knowledge-new-url-pages" class="form-input" min="1" max="100" value="10" title="Max pages" style="width:80px">
+                            <button type="button" class="btn btn-primary btn-sm" id="knowledge-crawl-url-btn">Crawl</button>
+                            <button type="button" class="btn btn-secondary btn-sm" id="knowledge-cancel-url-btn">Cancel</button>
+                        </div>
+                        <div class="knowledge-list" id="knowledge-url-list"><div class="knowledge-empty">Loading…</div></div>
+                    </div>
+
+                    <div class="knowledge-block">
+                        <div class="knowledge-block-head">
+                            <div class="knowledge-block-label">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                                Text blocks
+                            </div>
+                            <button type="button" class="btn btn-secondary btn-sm" id="knowledge-add-text-btn">+ Add text block</button>
+                        </div>
+                        <div class="knowledge-add-text-form" id="knowledge-add-text-form" style="display:none">
+                            <input type="text" id="knowledge-text-title" class="form-input" placeholder="Title (e.g. Return policy)">
+                            <textarea id="knowledge-text-content" class="form-textarea" rows="4" placeholder="Paste the text the AI should know…"></textarea>
+                            <div class="knowledge-form-actions">
+                                <button type="button" class="btn btn-primary btn-sm" id="knowledge-save-text-btn">Save & index</button>
+                                <button type="button" class="btn btn-secondary btn-sm" id="knowledge-cancel-text-btn">Cancel</button>
+                            </div>
+                            <input type="hidden" id="knowledge-text-doc-id" value="">
+                        </div>
+                        <div class="knowledge-list" id="knowledge-text-list"><div class="knowledge-empty">Loading…</div></div>
+                    </div>
+
+                    <div class="knowledge-block">
+                        <div class="knowledge-block-head">
+                            <div class="knowledge-block-label">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
+                                Business information
+                            </div>
+                            <button type="button" class="btn btn-secondary btn-sm" id="knowledge-save-biz-btn">Save</button>
+                        </div>
+                        <textarea id="knowledge-biz-content" class="form-textarea" rows="4" placeholder="Company name, contact info, opening hours, policies, pricing — anything the AI should always know about your business."></textarea>
+                        <small class="form-help" id="knowledge-biz-status"></small>
+                    </div>
+
+                    <div class="knowledge-block">
+                        <div class="knowledge-block-head">
+                            <div class="knowledge-block-label">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                Files
+                            </div>
+                            <button type="button" class="btn btn-secondary btn-sm" id="knowledge-add-docs-btn">+ Upload docs</button>
+                        </div>
+                        <div class="knowledge-list" id="knowledge-files-list"><div class="knowledge-empty">Loading…</div></div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Q&A Stats -->
             <div class="qa-stats-row" id="qa-stats-row">
                 <div class="qa-stat-card primary">
@@ -8159,8 +10424,260 @@ function renderTrainingTab() {
         </div>
     `;
     
+    initKnowledgeHandlers();
+    loadKnowledgeSources();
     loadQAStats();
     loadQAPairs();
+}
+
+// ==================== Knowledge Sources ====================
+
+let knowledgeDocs = [];
+
+function initKnowledgeHandlers() {
+    document.getElementById('knowledge-add-url-btn')?.addEventListener('click', () => {
+        document.getElementById('knowledge-add-url-form').style.display = 'flex';
+        document.getElementById('knowledge-new-url')?.focus();
+    });
+    document.getElementById('knowledge-cancel-url-btn')?.addEventListener('click', () => {
+        document.getElementById('knowledge-add-url-form').style.display = 'none';
+    });
+    document.getElementById('knowledge-crawl-url-btn')?.addEventListener('click', addKnowledgeUrl);
+
+    document.getElementById('knowledge-add-text-btn')?.addEventListener('click', () => {
+        openTextBlockForm();
+    });
+    document.getElementById('knowledge-cancel-text-btn')?.addEventListener('click', () => {
+        document.getElementById('knowledge-add-text-form').style.display = 'none';
+    });
+    document.getElementById('knowledge-save-text-btn')?.addEventListener('click', saveTextBlock);
+
+    document.getElementById('knowledge-save-biz-btn')?.addEventListener('click', saveBusinessInfo);
+    document.getElementById('knowledge-add-docs-btn')?.addEventListener('click', () => {
+        document.getElementById('upload-modal')?.classList.add('active');
+    });
+}
+
+async function loadKnowledgeSources() {
+    if (!currentDetailSite) return;
+    loadKnowledgeUrls();
+    loadBusinessInfo();
+    try {
+        const res = await fetch(`${API_BASE}/documents/${currentDetailSite.site_id}`, {
+            headers: getAuthHeaders()
+        });
+        const data = res.ok ? await res.json() : { documents: [] };
+        knowledgeDocs = data.documents || [];
+        renderKnowledgeLists();
+    } catch (e) {
+        console.error('Failed to load documents:', e);
+        knowledgeDocs = [];
+        renderKnowledgeLists();
+    }
+}
+
+async function loadKnowledgeUrls() {
+    const list = document.getElementById('knowledge-url-list');
+    if (!list || !currentDetailSite) return;
+    try {
+        const res = await fetch(`${API_BASE}/sites/${currentDetailSite.site_id}/knowledge/urls`, {
+            headers: getAuthHeaders()
+        });
+        const data = res.ok ? await res.json() : { urls: [] };
+        const urls = [{ url: currentDetailSite.url, primary: true }, ...(data.urls || [])];
+        list.innerHTML = urls.map(u => `
+            <div class="knowledge-item">
+                <div class="knowledge-item-info">
+                    <span class="knowledge-item-name">${escapeHtml(u.url)}</span>
+                    <span class="knowledge-item-meta">${u.primary ? 'Primary site' : (u.status === 'running' ? 'Crawling…' : `${u.pages_indexed || 0} pages indexed`)}</span>
+                </div>
+                ${u.primary
+                    ? '<span class="knowledge-badge">Site URL</span>'
+                    : `<button type="button" class="doc-delete" title="Remove" onclick="deleteKnowledgeUrl('${encodeURIComponent(u.url)}')">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                       </button>`}
+            </div>
+        `).join('');
+    } catch (e) {
+        list.innerHTML = '<div class="knowledge-empty">Could not load URLs</div>';
+    }
+}
+
+async function addKnowledgeUrl() {
+    const input = document.getElementById('knowledge-new-url');
+    const pagesInput = document.getElementById('knowledge-new-url-pages');
+    const btn = document.getElementById('knowledge-crawl-url-btn');
+    const url = (input?.value || '').trim();
+    if (!url) { input?.focus(); return; }
+    btn.disabled = true;
+    btn.textContent = 'Crawling…';
+    try {
+        const res = await fetch(`${API_BASE}/sites/${currentDetailSite.site_id}/knowledge/urls`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ url, max_pages: parseInt(pagesInput?.value, 10) || 10 })
+        });
+        if (!res.ok) throw new Error('Failed');
+        input.value = '';
+        document.getElementById('knowledge-add-url-form').style.display = 'none';
+        await loadKnowledgeUrls();
+        // Poll once after a delay to refresh status/pages_indexed
+        setTimeout(loadKnowledgeUrls, 8000);
+    } catch (e) {
+        alert('Failed to start crawl for that URL');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Crawl';
+    }
+}
+
+async function deleteKnowledgeUrl(encodedUrl) {
+    if (!currentDetailSite) return;
+    const url = decodeURIComponent(encodedUrl);
+    if (!confirm(`Remove ${url} and its indexed pages?`)) return;
+    try {
+        await fetch(`${API_BASE}/sites/${currentDetailSite.site_id}/knowledge/urls?url=${encodeURIComponent(url)}`, {
+            method: 'DELETE',
+            headers: getAuthHeaders()
+        });
+        await loadKnowledgeUrls();
+    } catch (e) {
+        alert('Failed to remove URL');
+    }
+}
+window.deleteKnowledgeUrl = deleteKnowledgeUrl;
+
+function renderKnowledgeLists() {
+    const textList = document.getElementById('knowledge-text-list');
+    const filesList = document.getElementById('knowledge-files-list');
+    const textBlocks = knowledgeDocs.filter(d => d.file_type === 'text_block');
+    const files = knowledgeDocs.filter(d => d.file_type !== 'text_block' && d.file_type !== 'business_info');
+
+    if (textList) {
+        textList.innerHTML = textBlocks.length ? textBlocks.map(d => `
+            <div class="knowledge-item">
+                <div class="knowledge-item-info">
+                    <span class="knowledge-item-name">${escapeHtml(d.filename)}</span>
+                    <span class="knowledge-item-meta">${(d.word_count || 0).toLocaleString()} words · ${d.status === 'indexed' ? 'indexed' : d.status}</span>
+                </div>
+                <button type="button" class="doc-delete knowledge-edit" title="Edit" onclick="editTextBlock('${d.id}')">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                </button>
+                <button type="button" class="doc-delete" title="Delete" onclick="deleteKnowledgeDoc('${d.id}')">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                </button>
+            </div>
+        `).join('') : '<div class="knowledge-empty">No text blocks yet — add snippets of text the AI should know.</div>';
+    }
+
+    if (filesList) {
+        filesList.innerHTML = files.length ? files.map(d => `
+            <div class="knowledge-item">
+                <div class="knowledge-item-info">
+                    <span class="knowledge-item-name">${escapeHtml(d.filename)}</span>
+                    <span class="knowledge-item-meta">${(d.word_count || 0).toLocaleString()} words · ${d.chunks || 0} chunks · ${d.status}</span>
+                </div>
+                <button type="button" class="doc-delete" title="Delete" onclick="deleteKnowledgeDoc('${d.id}')">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                </button>
+            </div>
+        `).join('') : '<div class="knowledge-empty">No files uploaded — PDF, DOCX, TXT, MD, CSV supported.</div>';
+    }
+}
+
+function openTextBlockForm(doc = null) {
+    const form = document.getElementById('knowledge-add-text-form');
+    form.style.display = 'block';
+    document.getElementById('knowledge-text-title').value = doc?.filename || '';
+    document.getElementById('knowledge-text-content').value = doc?.content || '';
+    document.getElementById('knowledge-text-doc-id').value = doc?.id || '';
+    document.getElementById('knowledge-save-text-btn').textContent = doc ? 'Update & re-index' : 'Save & index';
+    document.getElementById('knowledge-text-title').focus();
+}
+
+function editTextBlock(docId) {
+    const doc = knowledgeDocs.find(d => d.id === docId);
+    if (doc) openTextBlockForm(doc);
+}
+window.editTextBlock = editTextBlock;
+
+async function saveTextBlock() {
+    const title = document.getElementById('knowledge-text-title').value.trim();
+    const content = document.getElementById('knowledge-text-content').value;
+    const docId = document.getElementById('knowledge-text-doc-id').value;
+    const btn = document.getElementById('knowledge-save-text-btn');
+    if (!content.trim()) { alert('Content is required'); return; }
+    btn.disabled = true;
+    try {
+        const res = await fetch(
+            docId
+                ? `${API_BASE}/documents/text/${currentDetailSite.site_id}/${docId}`
+                : `${API_BASE}/documents/text/${currentDetailSite.site_id}`,
+            {
+                method: docId ? 'PUT' : 'POST',
+                headers: getAuthHeaders(),
+                body: JSON.stringify({ title, content })
+            }
+        );
+        if (!res.ok) throw new Error('Failed');
+        document.getElementById('knowledge-add-text-form').style.display = 'none';
+        await loadKnowledgeSources();
+    } catch (e) {
+        alert('Failed to save text block');
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+async function deleteKnowledgeDoc(docId) {
+    if (!currentDetailSite || !confirm('Delete this item and remove it from the index?')) return;
+    try {
+        await fetch(`${API_BASE}/documents/${currentDetailSite.site_id}/${docId}`, {
+            method: 'DELETE',
+            headers: getAuthHeaders()
+        });
+        await loadKnowledgeSources();
+    } catch (e) {
+        alert('Failed to delete');
+    }
+}
+window.deleteKnowledgeDoc = deleteKnowledgeDoc;
+
+async function loadBusinessInfo() {
+    const area = document.getElementById('knowledge-biz-content');
+    if (!area || !currentDetailSite) return;
+    try {
+        const res = await fetch(`${API_BASE}/documents/business-info/${currentDetailSite.site_id}`, {
+            headers: getAuthHeaders()
+        });
+        if (res.ok) {
+            const data = await res.json();
+            area.value = data.content || '';
+        }
+    } catch (e) { /* ignore */ }
+}
+
+async function saveBusinessInfo() {
+    const area = document.getElementById('knowledge-biz-content');
+    const btn = document.getElementById('knowledge-save-biz-btn');
+    const status = document.getElementById('knowledge-biz-status');
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+    try {
+        const res = await fetch(`${API_BASE}/documents/business-info/${currentDetailSite.site_id}`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ content: area.value })
+        });
+        if (!res.ok) throw new Error('Failed');
+        btn.textContent = 'Saved!';
+        if (status) status.textContent = 'Indexed for retrieval';
+        setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 1500);
+    } catch (e) {
+        if (status) status.textContent = 'Failed to save';
+        btn.textContent = 'Save';
+        btn.disabled = false;
+    }
 }
 
 async function loadQAStats() {
@@ -8591,3 +11108,164 @@ window.openQAFromConversationModal = openQAFromConversationModal;
 document.addEventListener('DOMContentLoaded', () => {
     setupQAEventListeners();
 });
+
+
+// ==================== PLATFORM (master admin) ====================
+let platformPlans = [];
+
+async function initPlatformView() {
+    if (!currentUser?.is_master) {
+        switchView('sites');
+        return;
+    }
+    await Promise.all([loadPlatformStats(), loadPlatformUsers(), loadPlatformPlans(), loadLandingConfig()]);
+}
+
+async function loadPlatformStats() {
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    try {
+        const [ov, fin] = await Promise.all([
+            fetch(`${API_BASE}/platform/overview`, { headers: getAuthHeaders() }).then(r => r.ok ? r.json() : null),
+            fetch(`${API_BASE}/platform/finance`, { headers: getAuthHeaders() }).then(r => r.ok ? r.json() : null)
+        ]);
+        if (ov) {
+            set('platform-total-users', ov.total_users ?? 0);
+            set('platform-total-sites', ov.total_sites ?? 0);
+            set('platform-stripe', ov.stripe_configured ? 'Connected' : 'Not configured');
+        }
+        if (fin) {
+            const mrr = fin.stripe?.configured && fin.stripe?.mrr != null ? fin.stripe.mrr : (fin.estimated_mrr || 0);
+            set('platform-mrr', `€${Number(mrr).toFixed(2)}`);
+        }
+    } catch (e) { /* non-fatal */ }
+}
+
+async function loadPlatformUsers() {
+    const tbody = document.getElementById('platform-users-body');
+    if (!tbody) return;
+    try {
+        const res = await fetch(`${API_BASE}/platform/users`, { headers: getAuthHeaders() });
+        if (!res.ok) throw new Error('load failed');
+        const data = await res.json();
+        const users = data.users || [];
+        if (!users.length) {
+            tbody.innerHTML = '<tr><td colspan="5" class="table-empty">No users yet.</td></tr>';
+            return;
+        }
+        const planOpts = (sel) => platformPlans
+            .map(p => `<option value="${p.id}" ${p.id === sel ? 'selected' : ''}>${p.name}</option>`).join('');
+        tbody.innerHTML = users.map(u => `
+            <tr>
+                <td><strong>${escapeHtml(u.name || u.email || '')}</strong><br><small class="muted">${escapeHtml(u.email || '')}</small></td>
+                <td>${escapeHtml(u.role || '')}${u.is_master ? ' · <em>master</em>' : ''}</td>
+                <td><select class="plan-select" data-user="${u.id}" ${u.is_master ? 'disabled' : ''}>${planOpts(u.plan || 'trial')}</select></td>
+                <td>${u.site_count ?? 0}</td>
+                <td>${u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}</td>
+            </tr>`).join('');
+
+        tbody.querySelectorAll('.plan-select').forEach(sel => {
+            sel.addEventListener('change', () => updateUserPlan(sel.dataset.user, sel.value));
+        });
+    } catch (e) {
+        tbody.innerHTML = '<tr><td colspan="5" class="table-empty">Failed to load users.</td></tr>';
+    }
+}
+
+async function updateUserPlan(userId, plan) {
+    try {
+        const res = await fetch(`${API_BASE}/platform/users/${userId}/plan`, {
+            method: 'PUT',
+            headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ plan })
+        });
+        if (!res.ok) throw new Error();
+        await loadPlatformStats();
+    } catch (e) {
+        alert('Failed to update plan.');
+        loadPlatformUsers();
+    }
+}
+
+async function loadPlatformPlans() {
+    const list = document.getElementById('platform-plans-list');
+    if (!list) return;
+    try {
+        const res = await fetch(`${API_BASE}/platform/plans`, { headers: getAuthHeaders() });
+        const data = res.ok ? await res.json() : {};
+        platformPlans = data.plans || [];
+        list.innerHTML = platformPlans.length ? platformPlans.map(p => `
+            <div class="platform-plan-row">
+                <div>
+                    <strong>${escapeHtml(p.name)}</strong>
+                    <span class="muted"> €${p.monthly_eur}/mo${p.yearly_eur ? ` · €${p.yearly_eur}/yr` : ''}</span>
+                </div>
+                <div class="platform-plan-meta">
+                    ${p.stripe_price_monthly ? '<span class="badge badge-ok">stripe linked</span>' : '<span class="badge badge-off">no stripe price</span>'}
+                </div>
+            </div>
+            <p class="settings-card-hint platform-plan-hl">${escapeHtml(p.highlights || '')}</p>`).join('')
+            : '<p class="settings-card-hint">No plans defined.</p>';
+    } catch (e) {
+        platformPlans = [];
+        list.innerHTML = '<p class="settings-card-hint">Failed to load plans.</p>';
+    }
+}
+
+// ---- Platform: landing page config (ads + booking embed) ----
+let landingConfigBound = false;
+
+async function loadLandingConfig() {
+    try {
+        const res = await fetch(`${API_BASE}/platform/landing-config`, { headers: getAuthHeaders() });
+        if (!res.ok) return;
+        const cfg = await res.json();
+        const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+        set('landing-ad-1', cfg.ad_slot_1);
+        set('landing-ad-2', cfg.ad_slot_2);
+        set('landing-booking-embed', cfg.demo_booking_embed);
+        await populateLandingSiteSelect(cfg.demo_site_id);
+        if (!landingConfigBound) {
+            landingConfigBound = true;
+            document.getElementById('landing-config-save')?.addEventListener('click', saveLandingConfig);
+        }
+    } catch (e) { /* non-fatal */ }
+}
+
+async function populateLandingSiteSelect(selected) {
+    const sel = document.getElementById('landing-demo-site');
+    if (!sel) return;
+    try {
+        const res = await fetch(`${API_BASE}/sites`, { headers: getAuthHeaders() });
+        const sites = res.ok ? await res.json() : [];
+        const list = Array.isArray(sites) ? sites : (sites.sites || []);
+        sel.innerHTML = '<option value="">Default (SwiftChat demo)</option>' +
+            list.map(s => `<option value="${s.site_id}" ${s.site_id === selected ? 'selected' : ''}>${escapeHtml(s.name || s.url || s.site_id)}</option>`).join('');
+    } catch (e) {
+        sel.innerHTML = '<option value="">Default (SwiftChat demo)</option>';
+    }
+}
+
+async function saveLandingConfig() {
+    const btn = document.getElementById('landing-config-save');
+    const status = document.getElementById('landing-config-status');
+    const payload = {
+        ad_slot_1: document.getElementById('landing-ad-1')?.value ?? '',
+        ad_slot_2: document.getElementById('landing-ad-2')?.value ?? '',
+        demo_booking_embed: document.getElementById('landing-booking-embed')?.value ?? '',
+        demo_site_id: document.getElementById('landing-demo-site')?.value ?? ''
+    };
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+    try {
+        const res = await fetch(`${API_BASE}/platform/landing-config`, {
+            method: 'PUT',
+            headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error();
+        if (status) status.textContent = 'Saved — live on the landing page now.';
+    } catch (e) {
+        if (status) status.textContent = 'Failed to save landing config.';
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Save landing config'; }
+    }
+}

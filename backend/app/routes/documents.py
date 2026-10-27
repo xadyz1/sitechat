@@ -157,46 +157,72 @@ async def upload_documents(
 
 async def index_documents(documents: List[dict], site_id: str):
     """Index uploaded documents into the vector store."""
+    for doc in documents:
+        await _index_single_document(site_id, doc)
+
+
+async def _index_single_document(site_id: str, doc: dict):
+    """Index one document record (reusable by text blocks / business info)."""
     mongodb = await get_mongodb()
     indexer = get_indexer_service()
-    vector_store = get_vector_store()
-    
-    for doc in documents:
-        try:
-            # Create page-like data for indexer
-            pages = [{
-                "url": f"doc://{site_id}/{doc['doc_id']}",
-                "title": doc['filename'],
-                "content": doc['text'],
-                "metadata": {
-                    **doc['metadata'],
-                    "source_type": "document",
-                    "doc_id": doc['doc_id'],
-                    "site_id": site_id
-                }
-            }]
-            
-            # Index the document
-            stats = await indexer.index_pages(pages)
-            
-            # Update document status
-            await mongodb.db.documents.update_one(
-                {"doc_id": doc['doc_id']},
-                {"$set": {
-                    "status": "indexed",
-                    "chunks_created": stats.get('total_chunks', 0),
-                    "indexed_at": datetime.utcnow()
-                }}
-            )
-            
-            logger.info(f"Indexed document {doc['filename']} with {stats.get('total_chunks', 0)} chunks")
-            
-        except Exception as e:
-            logger.error(f"Error indexing document {doc['filename']}: {e}")
-            await mongodb.db.documents.update_one(
-                {"doc_id": doc['doc_id']},
-                {"$set": {"status": "error", "error": str(e)}}
-            )
+
+    try:
+        # Create page-like data for indexer
+        pages = [{
+            "url": f"doc://{site_id}/{doc['doc_id']}",
+            "title": doc['filename'],
+            "content": doc['text'],
+            "metadata": {
+                **doc['metadata'],
+                "source_type": doc['metadata'].get("source_type", "document"),
+                "doc_id": doc['doc_id'],
+                "site_id": site_id
+            }
+        }]
+
+        # Index the document
+        stats = await indexer.index_pages(pages)
+
+        # Update document status
+        await mongodb.db.documents.update_one(
+            {"doc_id": doc['doc_id']},
+            {"$set": {
+                "status": "indexed",
+                "chunks_created": stats.get('total_chunks', 0),
+                "indexed_at": datetime.utcnow()
+            }}
+        )
+
+        logger.info(f"Indexed document {doc['filename']} with {stats.get('total_chunks', 0)} chunks")
+
+    except Exception as e:
+        logger.error(f"Error indexing document {doc['filename']}: {e}")
+        await mongodb.db.documents.update_one(
+            {"doc_id": doc['doc_id']},
+            {"$set": {"status": "error", "error": str(e)}}
+        )
+
+
+async def _remove_document_vectors(site_id: str, doc_id: str):
+    """Remove a document's vectors from the store (best-effort)."""
+    try:
+        vector_store = get_vector_store()
+        vector_store.delete_by_metadata({"url": f"doc://{site_id}/{doc_id}"})
+    except Exception as e:
+        logger.warning(f"Error deleting document vectors for {doc_id}: {e}")
+
+
+async def _check_site_access(site_id: str, user: dict):
+    """Shared site access check used by the knowledge endpoints."""
+    mongodb = await get_mongodb()
+    site = await mongodb.db.sites.find_one({"site_id": site_id})
+    if not site:
+        raise HTTPException(status_code=404, detail="Site not found")
+
+    user_id = str(user["_id"])
+    if site.get("user_id") and site["user_id"] != user_id and user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Access denied")
+    return site
 
 
 @router.get("/{site_id}")
@@ -229,7 +255,9 @@ async def list_documents(
                 "word_count": doc.get("word_count", 0),
                 "chunks": doc.get("chunks_created", 0),
                 "status": doc["status"],
-                "uploaded_at": doc["uploaded_at"].isoformat() if doc.get("uploaded_at") else None
+                "uploaded_at": doc["uploaded_at"].isoformat() if doc.get("uploaded_at") else None,
+                # Raw text is only stored for dashboard-editable sources (text blocks, business info)
+                **({"content": doc["content"]} if doc.get("content") else {})
             }
             for doc in documents
         ],
@@ -280,3 +308,174 @@ async def delete_document(
         )
     
     return {"success": True, "message": "Document deleted"}
+
+
+# ==================== Knowledge: Text Blocks ====================
+
+
+class TextBlockBody(BaseModel):
+    title: str
+    content: str
+
+
+def _word_count(text: str) -> int:
+    return len((text or "").split())
+
+
+@router.post("/text/{site_id}")
+async def create_text_block(
+    site_id: str,
+    body: TextBlockBody,
+    background_tasks: BackgroundTasks,
+    user: dict = Depends(require_auth),
+):
+    """Add a free-text knowledge block to a site (indexed for RAG)."""
+    await _check_site_access(site_id, user)
+    mongodb = await get_mongodb()
+
+    if not body.content.strip():
+        raise HTTPException(status_code=400, detail="Content is required")
+
+    doc_id = str(uuid.uuid4())[:12]
+    await mongodb.db.documents.insert_one({
+        "doc_id": doc_id,
+        "site_id": site_id,
+        "filename": body.title.strip() or "Text block",
+        "file_type": "text_block",
+        "word_count": _word_count(body.content),
+        "char_count": len(body.content),
+        "content": body.content,
+        "metadata": {"source_type": "text_block"},
+        "status": "processing",
+        "uploaded_at": datetime.utcnow(),
+        "uploaded_by": str(user["_id"]),
+    })
+
+    background_tasks.add_task(_index_single_document, site_id, {
+        "doc_id": doc_id,
+        "filename": body.title.strip() or "Text block",
+        "text": body.content,
+        "metadata": {"source_type": "text_block"},
+    })
+
+    await mongodb.db.sites.update_one(
+        {"site_id": site_id},
+        {"$set": {"has_documents": True, "updated_at": datetime.utcnow()}},
+    )
+    return {"success": True, "doc_id": doc_id}
+
+
+@router.put("/text/{site_id}/{doc_id}")
+async def update_text_block(
+    site_id: str,
+    doc_id: str,
+    body: TextBlockBody,
+    background_tasks: BackgroundTasks,
+    user: dict = Depends(require_auth),
+):
+    """Update a text block and re-index it."""
+    await _check_site_access(site_id, user)
+    mongodb = await get_mongodb()
+
+    doc = await mongodb.db.documents.find_one(
+        {"doc_id": doc_id, "site_id": site_id, "file_type": "text_block"}
+    )
+    if not doc:
+        raise HTTPException(status_code=404, detail="Text block not found")
+    if not body.content.strip():
+        raise HTTPException(status_code=400, detail="Content is required")
+
+    await _remove_document_vectors(site_id, doc_id)
+    await mongodb.db.documents.update_one(
+        {"doc_id": doc_id},
+        {"$set": {
+            "filename": body.title.strip() or "Text block",
+            "content": body.content,
+            "word_count": _word_count(body.content),
+            "char_count": len(body.content),
+            "status": "processing",
+            "updated_at": datetime.utcnow(),
+        }},
+    )
+
+    background_tasks.add_task(_index_single_document, site_id, {
+        "doc_id": doc_id,
+        "filename": body.title.strip() or "Text block",
+        "text": body.content,
+        "metadata": {"source_type": "text_block"},
+    })
+    return {"success": True, "doc_id": doc_id}
+
+
+# ==================== Knowledge: Business Information ====================
+
+
+BUSINESS_INFO_DOC_ID = "business-info"
+
+
+class BusinessInfoBody(BaseModel):
+    content: str
+
+
+@router.get("/business-info/{site_id}")
+async def get_business_info(site_id: str, user: dict = Depends(require_auth)):
+    """Get the site's business information block."""
+    await _check_site_access(site_id, user)
+    mongodb = await get_mongodb()
+    doc = await mongodb.db.documents.find_one(
+        {"doc_id": BUSINESS_INFO_DOC_ID, "site_id": site_id}
+    )
+    return {
+        "content": doc.get("content", "") if doc else "",
+        "updated_at": doc.get("updated_at") or (doc.get("uploaded_at") if doc else None),
+    }
+
+
+@router.put("/business-info/{site_id}")
+async def update_business_info(
+    site_id: str,
+    body: BusinessInfoBody,
+    background_tasks: BackgroundTasks,
+    user: dict = Depends(require_auth),
+):
+    """Create/update the site's business information block (indexed for RAG)."""
+    await _check_site_access(site_id, user)
+    mongodb = await get_mongodb()
+
+    await _remove_document_vectors(site_id, BUSINESS_INFO_DOC_ID)
+
+    if not body.content.strip():
+        # Empty content = clear the block
+        await mongodb.db.documents.delete_one(
+            {"doc_id": BUSINESS_INFO_DOC_ID, "site_id": site_id}
+        )
+        return {"success": True, "cleared": True}
+
+    await mongodb.db.documents.update_one(
+        {"doc_id": BUSINESS_INFO_DOC_ID, "site_id": site_id},
+        {"$set": {
+            "filename": "Business information",
+            "file_type": "business_info",
+            "content": body.content,
+            "word_count": _word_count(body.content),
+            "char_count": len(body.content),
+            "metadata": {"source_type": "business_info"},
+            "status": "processing",
+            "updated_at": datetime.utcnow(),
+            "uploaded_by": str(user["_id"]),
+        }, "$setOnInsert": {"uploaded_at": datetime.utcnow()}},
+        upsert=True,
+    )
+
+    background_tasks.add_task(_index_single_document, site_id, {
+        "doc_id": BUSINESS_INFO_DOC_ID,
+        "filename": "Business information",
+        "text": body.content,
+        "metadata": {"source_type": "business_info"},
+    })
+
+    await mongodb.db.sites.update_one(
+        {"site_id": site_id},
+        {"$set": {"has_documents": True, "updated_at": datetime.utcnow()}},
+    )
+    return {"success": True, "doc_id": BUSINESS_INFO_DOC_ID}

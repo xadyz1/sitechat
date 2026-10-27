@@ -1,0 +1,25 @@
+{% extends "helpcenter/base.html" %}
+{% block title %}Search — {{ portal_title }}{% endblock %}
+{% block content %}
+  <a class="hc-crumb" href="{{ home_url }}">Home</a>
+  <h2 class="hc-section-title" style="margin-top:14px">
+    {% if q %}Results for &ldquo;{{ q }}&rdquo;{% else %}Search{% endif %}
+  </h2>
+  {% if results %}
+    <div class="hc-art-list">
+      {% for art in results %}
+        <a class="hc-art-link" href="{{ base_path }}/articles/{{ art.slug }}">
+          <div class="hc-art-txt">
+            <h3>{{ art.title }}</h3>
+            {% if art.excerpt %}<p>{{ art.excerpt }}</p>{% endif %}
+          </div>
+          <span class="hc-arrow">→</span>
+        </a>
+      {% endfor %}
+    </div>
+  {% elif q %}
+    <div class="hc-empty">No articles found for &ldquo;{{ q }}&rdquo;.</div>
+  {% else %}
+    <div class="hc-empty">Type a query above to search the help center.</div>
+  {% endif %}
+{% endblock %}

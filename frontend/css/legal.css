@@ -1,0 +1,163 @@
+/* Shared styles for legal pages (privacy, terms, security) and 404 */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+    --primary: #7B3DFB;
+    --primary-dark: #5B21B6;
+    --ink: #111827;
+    --muted: #6B7280;
+    --line: #E5E7EB;
+    --bg: #F9FAFB;
+    --font: 'Poppins', system-ui, -apple-system, sans-serif;
+}
+
+body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+}
+
+.legal-header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--line);
+}
+
+.legal-header-inner {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 0.85rem 1.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.legal-logo {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    font-weight: 700;
+    font-size: 1.1rem;
+    color: var(--ink);
+    text-decoration: none;
+}
+
+.legal-logo img { border-radius: 8px; display: block; }
+.legal-logo span span { color: var(--primary); }
+
+.legal-back {
+    font-size: 0.85rem;
+    color: var(--muted);
+    text-decoration: none;
+}
+.legal-back:hover { color: var(--primary); }
+
+.legal-main {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 3rem 1.25rem 5rem;
+}
+
+.legal-main h1 {
+    font-size: clamp(1.75rem, 4vw, 2.4rem);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin-bottom: 0.5rem;
+    background: linear-gradient(90deg, #111827, #4B5563, #111827);
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: legalGradient 6s linear infinite;
+}
+
+@keyframes legalGradient {
+    to { background-position: 200% center; }
+}
+
+.legal-updated {
+    color: var(--muted);
+    font-size: 0.85rem;
+    margin-bottom: 2.5rem;
+}
+
+.legal-main h2 {
+    font-size: 1.15rem;
+    font-weight: 600;
+    margin: 2.25rem 0 0.6rem;
+}
+
+.legal-main p { margin-bottom: 0.9rem; color: #374151; font-size: 0.95rem; }
+.legal-main ul { margin: 0 0 0.9rem 1.25rem; color: #374151; font-size: 0.95rem; }
+.legal-main li { margin-bottom: 0.35rem; }
+.legal-main a { color: var(--primary); }
+
+.legal-footer {
+    border-top: 1px solid var(--line);
+    padding: 1.5rem 1.25rem;
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.8rem;
+}
+
+/* 404 page */
+.error-page {
+    min-height: 70vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 2rem 1.25rem;
+}
+
+.error-code {
+    font-size: clamp(5rem, 18vw, 9rem);
+    font-weight: 800;
+    line-height: 1;
+    background: linear-gradient(135deg, var(--primary), #EC1DC9);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 0.75rem;
+}
+
+.error-page h1 { font-size: 1.5rem; font-weight: 600; margin-bottom: 0.5rem; }
+.error-page p { color: var(--muted); max-width: 420px; margin: 0 auto 1.75rem; }
+
+.error-actions { display: flex; gap: 0.75rem; flex-wrap: wrap; justify-content: center; }
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.7rem 1.5rem;
+    border-radius: 10px;
+    font-family: var(--font);
+    font-size: 0.9rem;
+    font-weight: 500;
+    text-decoration: none;
+    cursor: pointer;
+    border: none;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+    color: #fff;
+    box-shadow: 0 6px 18px rgba(123, 61, 251, 0.35);
+}
+.btn-primary:hover { transform: translateY(-1px); }
+
+.btn-ghost {
+    background: #fff;
+    color: var(--ink);
+    border: 1px solid var(--line);
+}
+.btn-ghost:hover { border-color: var(--primary); color: var(--primary); }

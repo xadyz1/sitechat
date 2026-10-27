@@ -1,5 +1,5 @@
 """
-Configuration settings for the SiteChat Platform.
+Configuration settings for the SwiftChat Platform.
 Supports multiple providers for LLM, embeddings, vector store, database, storage, and cache.
 """
 import secrets
@@ -11,7 +11,7 @@ from typing import Literal, Optional, List
 
 class Settings(BaseSettings):
     # App settings
-    APP_NAME: str = "SiteChat"
+    APP_NAME: str = "SwiftChat"
     DEBUG: bool = False
     ENVIRONMENT: Literal["development", "staging", "production"] = "development"
     SITE_URL: str = "http://localhost:8000"
@@ -189,6 +189,51 @@ class Settings(BaseSettings):
         """Check if running in production mode."""
         return self.ENVIRONMENT == "production" and not self.DEBUG
     
+    # ===========================================
+    # Push notifications (OneSignal) — account-level defaults.
+    # Per-site/channel overrides live at site.notifications via the
+    # /api/sites/{id}/notifications endpoints.
+    # ===========================================
+    ONESIGNAL_APP_ID: Optional[str] = None
+    ONESIGNAL_REST_API_KEY: Optional[str] = None
+    ONESIGNAL_SAFARI_WEB_ID: Optional[str] = None
+
+    # ===========================================
+    # Payments — Stripe (subscriptions & finance)
+    # ===========================================
+    STRIPE_SECRET_KEY: Optional[str] = None
+    STRIPE_PUBLISHABLE_KEY: Optional[str] = None
+    STRIPE_WEBHOOK_SECRET: Optional[str] = None
+    STRIPE_PRICE_BASIC_MONTHLY: Optional[str] = None
+    STRIPE_PRICE_BASIC_YEARLY: Optional[str] = None
+    STRIPE_PRICE_ADVANCED_MONTHLY: Optional[str] = None
+    STRIPE_PRICE_ADVANCED_YEARLY: Optional[str] = None
+    STRIPE_CURRENCY: str = "eur"
+
+    # ===========================================
+    # Email — SMTP (transactional mail, alerts, invites)
+    # ===========================================
+    SMTP_HOST: Optional[str] = None
+    SMTP_PORT: int = 587
+    SMTP_USER: Optional[str] = None
+    SMTP_PASSWORD: Optional[str] = None
+    SMTP_FROM: Optional[str] = None
+    SMTP_USE_TLS: bool = True
+
+    # ===========================================
+    # Additional AI providers
+    # ===========================================
+    DEEPSEEK_API_KEY: Optional[str] = None
+    DEEPSEEK_BASE_URL: Optional[str] = None
+    GOOGLE_API_KEY: Optional[str] = None
+    GROQ_API_KEY: Optional[str] = None
+    MISTRAL_API_KEY: Optional[str] = None
+    COHERE_API_KEY: Optional[str] = None
+    OPENROUTER_API_KEY: Optional[str] = None
+
+    # Platform owner — full access to users management, plans and finance
+    MASTER_ADMIN_EMAIL: Optional[str] = "ivandro.work@gmail.com"
+
     # ===========================================
     # RAG settings
     # ===========================================

@@ -1,0 +1,91 @@
+{% extends "helpcenter/base.html" %}
+{% block title %}{{ article.title }} — {{ portal_title }}{% endblock %}
+{% block content %}
+  <div style="margin-bottom:20px;font-size:13px">
+    <a class="hc-crumb" href="{{ home_url }}" style="margin-bottom:0">Home</a>
+    {% if category %}
+      <span style="color:var(--hc-muted)"> / </span>
+      <a class="hc-crumb" href="{{ base_path }}/categories/{{ article.category_slug }}" style="margin-bottom:0">{{ category.name }}</a>
+    {% endif %}
+    <span style="color:var(--hc-muted)"> / {{ article.title }}</span>
+  </div>
+  <div class="hc-article-layout">
+    <div class="hc-article-main">
+      <div class="hc-article-head">
+        <h1>{{ article.title }}</h1>
+        <div class="hc-drop">
+          <button class="hc-openin-btn" type="button">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><path d="M15 3h6v6M10 14L21 3"/></svg>
+            Open in <span class="hc-caret">▾</span>
+          </button>
+          <div class="hc-drop-pop">
+            <button type="button" class="hc-drop-item" id="hc-copy-link">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
+              Copy link
+            </button>
+            <a class="hc-drop-item" target="_blank" rel="noopener noreferrer"
+               href="https://chatgpt.com/?q={{ request.url | urlencode }}">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 12h8M12 8v8"/></svg>
+              Open in ChatGPT <span class="hc-drop-ext">↗</span>
+            </a>
+            <a class="hc-drop-item" target="_blank" rel="noopener noreferrer"
+               href="https://claude.ai/new?q={{ request.url | urlencode }}">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6l2.4 4.8L19 12l-4.6 1.2L12 18l-2.4-4.8L5 12l4.6-1.2z"/></svg>
+              Open in Claude <span class="hc-drop-ext">↗</span>
+            </a>
+          </div>
+        </div>
+      </div>
+      <div class="hc-article-meta">
+        <span class="hc-article-avatar">
+          {% if logo_url %}<img src="{{ logo_url }}" alt="">{% else %}
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          {% endif %}
+        </span>
+        <span>
+          <div class="hc-meta-name">{{ portal_name }}</div>
+          {% if updated_display %}<div class="hc-meta-date">Last updated on {{ updated_display }}</div>{% endif %}
+        </span>
+      </div>
+      <div class="hc-article-body">{{ article.content_html | safe }}</div>
+    </div>
+    {% if toc %}
+      <aside class="hc-toc">
+        <div class="hc-toc-title">On this page</div>
+        {% for item in toc %}
+          <a href="#{{ item.id }}" class="{% if item.level == 'h3' %}toc-h3{% endif %}">{{ item.text }}</a>
+        {% endfor %}
+      </aside>
+    {% endif %}
+  </div>
+  <script>
+  (function () {
+    var copyBtn = document.getElementById('hc-copy-link');
+    if (copyBtn) copyBtn.addEventListener('click', function () {
+      var orig = copyBtn.innerHTML;
+      var done = function () {
+        copyBtn.innerHTML = 'Copied!';
+        setTimeout(function () { copyBtn.innerHTML = orig; }, 1500);
+      };
+      if (navigator.clipboard) navigator.clipboard.writeText(location.href).then(done);
+      else { var i = document.createElement('input'); i.value = location.href; document.body.appendChild(i); i.select(); document.execCommand('copy'); i.remove(); done(); }
+    });
+    // Scroll-spy for the TOC
+    var links = document.querySelectorAll('.hc-toc a');
+    if (links.length) {
+      var heads = [];
+      links.forEach(function (l) {
+        var h = document.getElementById(l.getAttribute('href').slice(1));
+        if (h) heads.push({ link: l, el: h });
+      });
+      var onScroll = function () {
+        var current = null;
+        heads.forEach(function (h) { if (h.el.getBoundingClientRect().top < 90) current = h; });
+        heads.forEach(function (h) { h.link.classList.toggle('toc-active', h === current); });
+      };
+      document.addEventListener('scroll', onScroll, { passive: true });
+      onScroll();
+    }
+  })();
+  </script>
+{% endblock %}

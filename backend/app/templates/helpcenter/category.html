@@ -1,0 +1,24 @@
+{% extends "helpcenter/base.html" %}
+{% block title %}{{ category.name }} — {{ portal_title }}{% endblock %}
+{% block content %}
+  <a class="hc-crumb" href="{{ home_url }}">Home</a> <span style="color:var(--hc-muted);font-size:13px">/</span>
+  <h2 class="hc-section-title" style="margin-top:14px">
+    {% if category.icon_url %}<img class="hc-cat-title-icon" src="{{ category.icon_url }}" alt="">{% elif category.icon %}<span class="hc-cat-emoji">{{ category.icon }}</span> {% endif %}{{ category.name }}
+  </h2>
+  {% if category.description %}<p class="hc-cat-desc">{{ category.description }}</p>{% endif %}
+  {% if articles %}
+    <div class="hc-art-list">
+      {% for art in articles %}
+        <a class="hc-art-link" href="{{ base_path }}/articles/{{ art.slug }}">
+          <div class="hc-art-txt">
+            <h3>{{ art.title }}</h3>
+            {% if art.excerpt %}<p>{{ art.excerpt }}</p>{% endif %}
+          </div>
+          <span class="hc-arrow">→</span>
+        </a>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="hc-empty">No articles in this topic yet.</div>
+  {% endif %}
+{% endblock %}

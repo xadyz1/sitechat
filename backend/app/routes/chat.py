@@ -60,6 +60,16 @@ async def chat(request: Request, body: ChatRequest):
     """
     try:
         rag_engine = get_rag_engine()
+        mongodb = await get_mongodb()
+
+        # Detect a brand-new conversation before the reply is generated
+        is_new_conversation = True
+        if body.site_id:
+            try:
+                history = await mongodb.get_conversation_history(body.session_id, limit=1)
+                is_new_conversation = not history
+            except Exception:
+                is_new_conversation = True
 
         response = await rag_engine.chat(
             message=body.message,
@@ -76,7 +86,14 @@ async def chat(request: Request, body: ChatRequest):
         
         response.suggest_handoff = suggest_handoff
         response.handoff_reason = handoff_reason
-        
+
+        if body.site_id and is_new_conversation:
+            try:
+                from app.services.notifications import notify_new_message
+                await notify_new_message(body.site_id, body.session_id, body.message)
+            except Exception as e:
+                logger.warning(f"New conversation push notification failed: {e}")
+
         return response
         
     except Exception as e:

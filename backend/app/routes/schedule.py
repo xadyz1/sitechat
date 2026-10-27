@@ -31,38 +31,40 @@ async def _execute_crawl_job(
     trigger: str = "manual"
 ) -> str:
     """Execute a crawl job and return job_id."""
+    from bson import ObjectId
+
     db = await get_mongodb()
-    
+
     job_id = await db.create_scheduled_crawl_job(
         site_id=site_id,
         target_url=site_url,
         trigger=trigger
     )
-    
+
     crawler = CrawlerService()
-    crawler.job_id = job_id
-    
+
     try:
         pages = await crawler.crawl(
-            url=site_url,
+            start_url=site_url,
             max_pages=max_pages,
             include_patterns=include_patterns,
-            exclude_patterns=exclude_patterns
+            exclude_patterns=exclude_patterns,
+            job_id=job_id
         )
-        
+
         if pages:
             indexer = IndexerService()
-            indexed_count = await indexer.index_pages(pages, site_id=site_id)
-            
+            stats = await indexer.index_pages(pages, job_id=job_id)
+
             await db.update_crawl_job(
                 job_id=job_id,
                 status="completed",
                 pages_crawled=len(pages),
-                pages_indexed=indexed_count
+                pages_indexed=stats["indexed_pages"]
             )
-            
+
             await db.db.crawl_jobs.update_one(
-                {"_id": db.db.crawl_jobs.find_one({"_id": job_id})},
+                {"_id": ObjectId(job_id)},
                 {"$set": {"completed_at": datetime.utcnow()}}
             )
         else:
@@ -233,20 +235,21 @@ async def _run_crawl_background(
     
     db = await get_mongodb()
     crawler = CrawlerService()
-    crawler.job_id = job_id
-    
+
     try:
         pages = await crawler.crawl(
-            url=site_url,
+            start_url=site_url,
             max_pages=max_pages,
             include_patterns=include_patterns,
-            exclude_patterns=exclude_patterns
+            exclude_patterns=exclude_patterns,
+            job_id=job_id
         )
-        
+
         indexed_count = 0
         if pages:
             indexer = IndexerService()
-            indexed_count = await indexer.index_pages(pages, site_id=site_id)
+            stats = await indexer.index_pages(pages, job_id=job_id)
+            indexed_count = stats["indexed_pages"]
         
         await db.update_crawl_job(
             job_id=job_id,

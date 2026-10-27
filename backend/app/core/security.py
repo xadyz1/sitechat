@@ -1,5 +1,5 @@
 """
-Security utilities and middleware for the SiteChat application.
+Security utilities and middleware for the SwiftChat application.
 """
 import re
 import secrets

@@ -3,17 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - SiteChat</title>
+    <title>Login - SwiftChat</title>
+
+    <link rel="manifest" href="/manifest.webmanifest">
+    <meta name="theme-color" content="#0B1129">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="SwiftChat">
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800&display=swap" rel="stylesheet">
     <style>
         :root {
-            --primary: #0d9488;
-            --primary-dark: #0f766e;
-            --primary-light: #14b8a6;
-            --primary-lighter: #ccfbf1;
-            --accent: #22d3ee;
+            --primary: #7B3DFB;
+            --primary-dark: #5F21E0;
+            --primary-light: #9B6BFC;
+            --primary-lighter: #F1E8FF;
+            --accent: #EC1DC9;
             --gray-50: #f4f7f6;
             --gray-100: #f3f4f6;
             --gray-200: #e5e7eb;
@@ -50,7 +58,7 @@
         /* Left Panel - Branding */
         .login-branding {
             flex: 1;
-            background: linear-gradient(145deg, #0f766e 0%, #0d9488 38%, #0891b2 72%, #0e7490 100%);
+            background: linear-gradient(145deg, #5F21E0 0%, #7B3DFB 38%, #0891b2 72%, #0e7490 100%);
             display: flex;
             flex-direction: column;
             justify-content: center;
@@ -453,11 +461,9 @@
         
         <div class="branding-content">
             <div class="branding-logo" id="branding-logo">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-                </svg>
+                <img src="/icons/icon-192.png" alt="SwiftChat" style="width:52px;height:52px;border-radius:14px;display:block;">
             </div>
-            <h1 class="branding-title" id="branding-title">SiteChat</h1>
+            <h1 class="branding-title" id="branding-title">SwiftChat</h1>
             <p class="branding-subtitle" id="branding-subtitle">AI-Powered Customer Support Platform</p>
             
             <div class="branding-features">
@@ -556,22 +562,10 @@
                 </button>
             </form>
 
-            <div class="login-footer" id="login-demo-footer" hidden>
-                <p>Demo credentials: <code>__ADMIN_EMAIL__</code> / <code>Admin123!</code></p>
-            </div>
         </div>
     </div>
 
     <script>
-        (function () {
-            const h = window.location.hostname;
-            const isLocal =
-                h === 'localhost' ||
-                h === '127.0.0.1' ||
-                h === '[::1]';
-            const footer = document.getElementById('login-demo-footer');
-            if (footer && isLocal) footer.removeAttribute('hidden');
-        })();
 
         const API_BASE = window.location.origin + '/api';
 
