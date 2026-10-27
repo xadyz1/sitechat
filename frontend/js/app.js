@@ -11213,6 +11213,7 @@ async function loadPlatformPlans() {
 
 // ---- Platform: landing page config (ads + booking embed) ----
 let landingConfigBound = false;
+let landingSites = [];
 
 async function loadLandingConfig() {
     try {
@@ -11237,11 +11238,24 @@ async function populateLandingSiteSelect(selected) {
     try {
         const res = await fetch(`${API_BASE}/sites`, { headers: getAuthHeaders() });
         const sites = res.ok ? await res.json() : [];
-        const list = Array.isArray(sites) ? sites : (sites.sites || []);
+        landingSites = Array.isArray(sites) ? sites : (sites.sites || []);
         sel.innerHTML = '<option value="">Default (SwiftChat demo)</option>' +
-            list.map(s => `<option value="${s.site_id}" ${s.site_id === selected ? 'selected' : ''}>${escapeHtml(s.name || s.url || s.site_id)}</option>`).join('');
+            landingSites.map(s => `<option value="${s.site_id}" ${s.site_id === selected ? 'selected' : ''}>${escapeHtml(s.name || s.url || s.site_id)}</option>`).join('');
     } catch (e) {
         sel.innerHTML = '<option value="">Default (SwiftChat demo)</option>';
+    }
+    const customBtn = document.getElementById('landing-demo-customize');
+    if (customBtn && !customBtn.dataset.bound) {
+        customBtn.dataset.bound = '1';
+        sel.addEventListener('change', () => { customBtn.disabled = !sel.value; });
+        customBtn.addEventListener('click', async () => {
+            const site = landingSites.find(s => s.site_id === sel.value);
+            if (!site) return;
+            switchView('sites');
+            await openSiteDetails(site);
+            activateDetailTab('appearance');
+        });
+        customBtn.disabled = !sel.value;
     }
 }
 

@@ -1206,7 +1206,10 @@
                         <p class="settings-card-hint">HTML/snippets rendered on the public landing page. Type <code>off</code> in an ad slot to hide it.</p>
                         <div class="form-group" style="margin-bottom:14px">
                             <label for="landing-demo-site">Demo chat site (widget embedded on the landing page)</label>
-                            <select id="landing-demo-site" class="form-select"></select>
+                            <div style="display:flex;gap:8px;align-items:center">
+                                <select id="landing-demo-site" class="form-select" style="flex:1"></select>
+                                <button type="button" class="btn btn-secondary btn-sm" id="landing-demo-customize" disabled>Customize</button>
+                            </div>
                             <small class="form-help">The selected site's widget powers the landing page live chat. Personalize it via that site's Appearance tab.</small>
                         </div>
                         <div class="form-group" style="margin-bottom:14px">

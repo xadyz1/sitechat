@@ -1348,8 +1348,9 @@ button, .btn, input, select, textarea {
     padding: 24px;
 }
 
-/* Dashboard SPA: hide embed widget; keep sidebar above any stray high z-index layers */
-body[data-sitechat-dashboard] .sitechat-widget {
+/* Dashboard SPA: hide embed widget; keep sidebar above any stray high z-index layers.
+   The Appearance live preview is exempt via .sitechat-preview. */
+body[data-sitechat-dashboard] .sitechat-widget:not(.sitechat-preview) {
     display: none !important;
     pointer-events: none !important;
     visibility: hidden !important;
