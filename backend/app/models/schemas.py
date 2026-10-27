@@ -271,6 +271,15 @@ class SiteBehaviorConfig(BaseModel):
         description="Custom add-to-cart URL template with {id} {url} {base} {name} placeholders (used when shop_platform=custom, or as fallback)"
     )
     cart_button_label: str = Field(default="Add to cart", description="Label for the add-to-cart button on product cards")
+    order_lookup_enabled: bool = Field(default=False, description="Fetch live order status when the visitor mentions an order reference")
+    order_lookup_url: Optional[str] = Field(
+        default=None,
+        description="Order-status endpoint URL template with {ref} placeholder, e.g. https://shop.example/api/track?ref={ref}"
+    )
+    order_ref_pattern: Optional[str] = Field(
+        default=None,
+        description="Regex to extract order references from messages (default matches e.g. SP-75115C)"
+    )
 
 
 class SiteLeadCaptureConfig(BaseModel):

@@ -169,6 +169,8 @@ class RAGEngine:
                 site_behavior = (site.get("config") or {}).get("behavior") or {}
                 if site_behavior.get("product_cards", True):
                     catalog_addendum = await self._catalog_addendum(mongodb, site.get("url"))
+                from app.services.orders import order_context_addendum
+                catalog_addendum += await order_context_addendum(message, site_behavior)
                 logger.info(f"Filtering by site: {site_url_filter}")
         
         try:
@@ -326,6 +328,8 @@ class RAGEngine:
                 site_behavior = (site.get("config") or {}).get("behavior") or {}
                 if site_behavior.get("product_cards", True):
                     catalog_addendum = await self._catalog_addendum(mongodb, site.get("url"))
+                from app.services.orders import order_context_addendum
+                catalog_addendum += await order_context_addendum(message, site_behavior)
 
         try:
             rewritten_query = message

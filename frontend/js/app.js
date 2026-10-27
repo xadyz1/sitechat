@@ -2238,6 +2238,18 @@ function getBehaviorTabContent() {
                 <label for="config-cart-label">Add-to-cart Button Label</label>
                 <input type="text" id="config-cart-label" placeholder="Add to cart" value="${escapeHtml(behavior.cart_button_label || '')}" class="form-input">
             </div>
+            <h5 class="config-subsection-title">Order Tracking</h5>
+            <div class="form-group form-checkbox">
+                <input type="checkbox" id="config-order-lookup" ${behavior.order_lookup_enabled ? 'checked' : ''}>
+                <label for="config-order-lookup">Look up live order status when a visitor mentions an order reference</label>
+            </div>
+            <div class="form-group" id="order-lookup-fields" style="display:${behavior.order_lookup_enabled ? '' : 'none'}">
+                <label for="config-order-lookup-url">Tracking endpoint URL</label>
+                <input type="text" id="config-order-lookup-url" placeholder="https://yourshop.com/api/track?ref={ref}" value="${escapeHtml(behavior.order_lookup_url || '')}" class="form-input">
+                <small class="form-help">Must contain {ref} — replaced with the order reference found in the message. Called server-side.</small>
+                <label for="config-order-ref-pattern" style="margin-top:8px">Order reference pattern (regex, optional)</label>
+                <input type="text" id="config-order-ref-pattern" placeholder="\\b[A-Z]{1,5}[-#][A-Z0-9]{3,}\\b" value="${escapeHtml(behavior.order_ref_pattern || '')}" class="form-input">
+            </div>
 
             <div class="form-actions">
                 <button type="button" class="btn btn-primary btn-sm" id="save-config">Save Changes</button>
@@ -4538,7 +4550,10 @@ function getDefaultConfig() {
             product_cards: true,
             shop_platform: 'auto',
             cart_url_template: null,
-            cart_button_label: 'Add to cart'
+            cart_button_label: 'Add to cart',
+            order_lookup_enabled: false,
+            order_lookup_url: null,
+            order_ref_pattern: null
         },
         lead_capture: {
             collect_email: false,
@@ -4705,6 +4720,13 @@ function populateConfigForm(config) {
     const toggleTpl = () => { if (tplGroup) tplGroup.style.display = platformSel?.value === 'custom' ? '' : 'none'; };
     platformSel?.addEventListener('change', toggleTpl);
     toggleTpl();
+    setVal('config-order-lookup-url', behavior.order_lookup_url || '');
+    setVal('config-order-ref-pattern', behavior.order_ref_pattern || '');
+    const orderCb = document.getElementById('config-order-lookup');
+    const orderFields = document.getElementById('order-lookup-fields');
+    const toggleOrder = () => { if (orderFields) orderFields.style.display = orderCb?.checked ? '' : 'none'; };
+    orderCb?.addEventListener('change', toggleOrder);
+    toggleOrder();
 }
 
 function getConfigFromForm() {
@@ -4781,7 +4803,10 @@ function getConfigFromForm() {
             product_cards: checked('config-product-cards') ?? true,
             shop_platform: val('config-shop-platform') || 'auto',
             cart_url_template: val('config-cart-template')?.trim() || null,
-            cart_button_label: val('config-cart-label')?.trim() || 'Add to cart'
+            cart_button_label: val('config-cart-label')?.trim() || 'Add to cart',
+            order_lookup_enabled: checked('config-order-lookup') || false,
+            order_lookup_url: val('config-order-lookup-url')?.trim() || null,
+            order_ref_pattern: val('config-order-ref-pattern')?.trim() || null
         }
     };
 }
