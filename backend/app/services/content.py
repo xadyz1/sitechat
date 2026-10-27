@@ -84,6 +84,28 @@ def _parse_draft(raw: str) -> Dict[str, Any]:
     }
 
 
+def build_image_url(site: Dict[str, Any], post: Dict[str, Any], seed: int = 0) -> str:
+    """On-demand featured image via pollinations.ai — free, keyless.
+
+    The URL generates the image when first fetched, so we store it directly.
+    Change seed to regenerate a different image for the same brief.
+    """
+    import random
+    from urllib.parse import quote
+    cfg = _site_content_config(site)
+    voice = (cfg.get("voice_instructions") or "")[:200]
+    subject = post.get("title") or post.get("brief") or "editorial article"
+    prompt = (
+        f"editorial magazine cover photo for: {subject}. "
+        f"{voice} photographic, no text, no watermark"
+    )
+    return (
+        "https://image.pollinations.ai/prompt/"
+        + quote(prompt, safe="")
+        + f"?width=1200&height=630&nologo=true&model=flux&seed={seed or random.randint(1, 99999)}"
+    )
+
+
 def _slugify(title: str) -> str:
     import unicodedata
     ascii_title = unicodedata.normalize("NFKD", title or "").encode("ascii", "ignore").decode()
@@ -105,6 +127,7 @@ async def publish_post(site: Dict[str, Any], post: Dict[str, Any]) -> None:
         "html": post.get("draft_html") or "",
         "meta_description": post.get("meta_description") or "",
         "tags": post.get("tags") or [],
+        "image_url": post.get("image_url") or None,
         "author": cfg.get("author_name") or "AI Writer",
         "scheduled_at": post["scheduled_at"].isoformat() if post.get("scheduled_at") else None,
         "site_id": site.get("site_id"),

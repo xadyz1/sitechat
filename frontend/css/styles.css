@@ -12020,3 +12020,6 @@ body.is-master .is-master-only { display: flex !important; }
 .content-status-failed { background: #fee2e2; color: #b91c1c; }
 .content-status-rejected { background: #f3f4f6; color: #6b7280; }
 .content-status-drafting, .content-status-publishing { background: #ede9fe; color: #6d28d9; }
+.content-image-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.content-image-row .content-image-input { flex: 1; }
+.content-image-preview { display: block; max-width: 220px; border-radius: 8px; margin-bottom: 8px; }

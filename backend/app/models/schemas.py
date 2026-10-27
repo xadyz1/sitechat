@@ -432,6 +432,7 @@ class ContentPostUpdate(BaseModel):
     scheduled_at: Optional[datetime] = None
     title: Optional[str] = Field(None, max_length=300)
     draft_html: Optional[str] = Field(None, max_length=200000)
+    image_url: Optional[str] = Field(None, max_length=2000)
 
 
 class ContentPost(BaseModel):
@@ -447,6 +448,7 @@ class ContentPost(BaseModel):
     draft_html: Optional[str] = None
     meta_description: Optional[str] = None
     tags: List[str] = Field(default_factory=list)
+    image_url: Optional[str] = None
     error: Optional[str] = None
     published_at: Optional[datetime] = None
     created_at: Optional[datetime] = None

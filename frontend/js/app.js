@@ -11926,6 +11926,12 @@ function renderContentPosts() {
                     ${post.summary ? `<p>${escapeHtml(post.summary)}</p>` : ''}
                     ${(post.tags || []).length ? `<p>Tags: ${post.tags.map(escapeHtml).join(', ')}</p>` : ''}
                 </div>
+                <div class="content-image-row">
+                    <input type="url" class="form-input content-image-input" placeholder="Featured image URL (optional)"
+                        value="${escapeHtml(post.image_url || '')}" data-post-id="${post.post_id}">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="contentPostAction('${post.post_id}','image')">Generate image</button>
+                </div>
+                ${post.image_url ? `<img class="content-image-preview" src="${escapeHtml(post.image_url)}" alt="" onerror="this.remove()">` : ''}
                 <iframe class="content-draft-frame" sandbox="" srcdoc="${escapeHtml('<style>body{font-family:sans-serif;padding:12px;line-height:1.5}</style>' + post.draft_html)}"></iframe>
             </div>` : '';
         const err = post.error ? `<p class="content-post-error">${escapeHtml(post.error)}</p>` : '';
@@ -11941,6 +11947,20 @@ function renderContentPosts() {
                 <div class="content-post-actions">${contentPostActions(post)}</div>
             </div>`;
     }).join('');
+    el.querySelectorAll('.content-image-input').forEach(input => {
+        input.addEventListener('change', () => contentSetImage(input.dataset.postId, input.value.trim()));
+    });
+}
+
+async function contentSetImage(postId, imageUrl) {
+    if (!currentDetailSite) return;
+    try {
+        await fetch(`${API_BASE}/sites/${currentDetailSite.site_id}/content/posts/${postId}`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ image_url: imageUrl || null })
+        });
+    } catch (e) { /* keep the typed value; next reload will reconcile */ }
 }
 
 async function contentPostAction(postId, action) {

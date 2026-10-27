@@ -160,6 +160,25 @@ async def approve(site_id: str, post_id: str, user: dict = Depends(require_auth)
     return _serialize(post)
 
 
+@router.post("/posts/{post_id}/image")
+async def generate_image(site_id: str, post_id: str, user: dict = Depends(require_auth)):
+    """Generate (or regenerate) a featured image URL for a draft."""
+    db = await get_mongodb()
+    site = await _require_site(db, site_id, user)
+    post = await db.db.content_posts.find_one({"post_id": post_id, "site_id": site_id})
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    if post.get("status") == "published":
+        raise HTTPException(status_code=400, detail="Post already published")
+
+    image_url = content_service.build_image_url(site, post)
+    await db.db.content_posts.update_one(
+        {"post_id": post_id},
+        {"$set": {"image_url": image_url, "updated_at": datetime.utcnow()}},
+    )
+    return {"image_url": image_url}
+
+
 @router.post("/posts/{post_id}/reject")
 async def reject(site_id: str, post_id: str, user: dict = Depends(require_auth)):
     db = await get_mongodb()
