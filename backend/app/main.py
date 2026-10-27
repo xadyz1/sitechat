@@ -204,9 +204,6 @@ app.add_middleware(
     allow_origins=settings.cors_origins_list,
     allow_origin_regex=settings.cors_origin_regex,
     allow_credentials=settings.CORS_ALLOW_CREDENTIALS,
-    # With "*" origins, mirror the request Origin on preflights too so
-    # credentialed requests from embedded sites keep working.
-    preflight_explicit_allow_origin=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["Authorization", "Content-Type", "X-Requested-With", "Accept", "Origin"],
     expose_headers=["X-Total-Count", "X-Page", "X-Per-Page"],
