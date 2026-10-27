@@ -257,6 +257,10 @@ class Settings(BaseSettings):
     # ===========================================
     MAX_PAGES: int = 100
     CRAWL_DELAY: float = 1.0
+    # Render pages through headless Chromium when static fetch yields a
+    # JS shell (SPA sites). Requires playwright + chromium in the image;
+    # degrades gracefully to static-only when unavailable.
+    CRAWLER_JS_RENDER: bool = True
     
     # ===========================================
     # Rate limiting

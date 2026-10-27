@@ -50,6 +50,7 @@ async def list_sites(user: dict = Depends(require_auth)):
             "site_id": site.get("site_id"),
             "name": site.get("name"),
             "url": site.get("url"),
+            "favicon_url": site.get("favicon_url"),
             "user_id": site.get("user_id"),
             "status": job_status,
             "pages_crawled": job.get("pages_crawled", 0) if job else 0,
@@ -79,11 +80,34 @@ async def get_site(site_id: str, user: dict = Depends(require_auth)):
         "site_id": site.get("site_id"),
         "name": site.get("name"),
         "url": site.get("url"),
+        "favicon_url": site.get("favicon_url"),
         "user_id": site.get("user_id"),
         "status": job.get("status") if job else site.get("status", "pending"),
         "pages_crawled": job.get("pages_crawled", 0) if job else 0,
         "pages_indexed": job.get("pages_indexed", 0) if job else 0
     }
+
+
+class SiteMetaUpdate(BaseModel):
+    """Site-level metadata (name, favicon) — not part of the public widget config."""
+    name: Optional[str] = None
+    favicon_url: Optional[str] = None
+
+
+@router.put("/{site_id}/meta")
+async def update_site_meta(site_id: str, data: SiteMetaUpdate, user: dict = Depends(require_auth)):
+    """Update site name and/or favicon (used by auto brand detection)."""
+    db = await get_mongodb()
+    site = await db.get_site(site_id)
+    if not site:
+        raise HTTPException(status_code=404, detail="Site not found")
+    if not can_manage_site(user, site):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    updates = {k: v for k, v in data.model_dump().items() if v is not None}
+    if updates:
+        await db.update_site(site_id, updates)
+    return {"ok": True, **updates}
 
 
 @router.delete("/{site_id}")

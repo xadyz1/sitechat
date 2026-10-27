@@ -9,7 +9,8 @@ WORKDIR /app/backend
 
 # Python deps first for layer caching
 COPY backend/requirements.txt ./requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt \
+    && playwright install --with-deps chromium
 
 # App code + sibling frontend dir expected by app.main (project_root/frontend)
 COPY backend/ ./

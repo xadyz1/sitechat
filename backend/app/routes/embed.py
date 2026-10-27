@@ -109,9 +109,14 @@ async def crawl_and_index_site(url: str, site_id: str, max_pages: int = 50):
         )
         
         if not pages:
-            crawler_errors = crawler.get_stats().get("error_messages", [])
+            stats = crawler.get_stats()
+            crawler_errors = stats.get("error_messages", [])
             error_msg = "No pages found"
-            if crawler_errors:
+            if stats.get("thin_pages"):
+                error_msg = ("Site appears to be JavaScript-rendered (SPA) — "
+                             "the static crawler found no readable content. "
+                             "Upload documents instead, or enable JS rendering.")
+            elif crawler_errors:
                 if any("bot protection" in e.lower() or "rate limited" in e.lower() for e in crawler_errors):
                     error_msg = "Site has bot protection - cannot crawl automatically"
                 elif any("forbidden" in e.lower() for e in crawler_errors):

@@ -11789,3 +11789,180 @@ body.is-master .is-master-only { display: flex !important; }
 .platform-user-form .form-group { display: flex; flex-direction: column; gap: 4px; }
 .platform-user-form .form-group label { font-size: 12px; font-weight: 600; color: #475569; }
 .platform-user-actions { white-space: nowrap; display: flex; gap: 4px; }
+
+/* ── Fixed bottom navigation for all phones (641–768px gap + utility icons) ── */
+@media (max-width: 768px) {
+    .sidebar {
+        position: fixed !important;
+        top: auto;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        width: 100%;
+        height: calc(64px + env(safe-area-inset-bottom, 0px));
+        padding-bottom: env(safe-area-inset-bottom, 0px);
+        flex-direction: row;
+        align-items: stretch;
+        transform: none !important;
+        z-index: 300;
+        border-right: none;
+        border-top: 1px solid var(--gray-200);
+        box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.06);
+    }
+
+    .sidebar-brand {
+        display: none;
+    }
+
+    .sidebar-menu {
+        flex: 1 1 auto;
+        width: auto;
+        height: 100%;
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-around;
+        padding: 0 4px;
+        gap: 0;
+        overflow-x: auto;
+        overflow-y: hidden;
+        scrollbar-width: none;
+    }
+    .sidebar-menu::-webkit-scrollbar { display: none; }
+
+    /* Hamburger is dead weight now that the nav is a fixed bottom bar */
+    .mobile-menu-btn {
+        display: none;
+    }
+
+    .sidebar-menu .menu-item {
+        flex: 0 0 auto;
+        height: 48px;
+        min-width: 44px;
+        padding: 0 10px;
+        margin: 0 1px;
+        border-radius: 10px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        white-space: nowrap;
+    }
+
+    .sidebar-menu .menu-item > span {
+        display: none !important;
+    }
+
+    /* Utility links + logout stay reachable as compact icons */
+    .sidebar-footer {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 0;
+        padding: 0 6px 0 2px;
+        border-top: none;
+        flex: 0 0 auto;
+    }
+
+    .sidebar-utils {
+        display: flex;
+        flex-direction: row;
+        gap: 0;
+    }
+
+    .sidebar-util-link {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 44px;
+        padding: 0;
+        border-radius: 10px;
+        color: var(--gray-500);
+        font-size: 0;
+    }
+    .sidebar-util-link svg { width: 18px; height: 18px; flex-shrink: 0; }
+
+    .sidebar-footer .user-menu {
+        display: flex;
+        align-items: center;
+        gap: 0;
+        margin: 0;
+        padding: 0;
+        border: none;
+    }
+    .sidebar-footer .user-avatar,
+    .sidebar-footer .user-info {
+        display: none;
+    }
+    .sidebar-footer .logout-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 44px;
+        padding: 0;
+        border-radius: 10px;
+    }
+
+    .main {
+        padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px));
+    }
+}
+
+/* Keep the labelled variant on small phones — footer icons stay icon-only */
+@media (max-width: 640px) {
+    .sidebar { height: calc(68px + env(safe-area-inset-bottom, 0px)); }
+    .sidebar-menu .menu-item { height: 56px; }
+    .sidebar-util-link,
+    .sidebar-footer .logout-btn { width: 38px; }
+}
+
+/* Brand detection (add-site modal) */
+.brand-fetch-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: -6px 0 14px;
+    flex-wrap: wrap;
+}
+.brand-fetch-row .field-hint { font-size: 11px; color: var(--gray-500); }
+
+.brand-preview {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 14px;
+}
+.bp-head { display: flex; align-items: center; gap: 8px; }
+.bp-icon { width: 24px; height: 24px; border-radius: 6px; object-fit: contain; background: #fff; border: 1px solid #e2e8f0; }
+.bp-lang { margin-left: auto; font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--gray-500); background: var(--gray-100, #f1f5f9); padding: 2px 8px; border-radius: 99px; }
+.bp-colors { display: flex; gap: 6px; margin-top: 10px; }
+.bp-swatch { width: 22px; height: 22px; border-radius: 6px; border: 1px solid rgba(0,0,0,.08); }
+.bp-questions { margin: 10px 0 0; padding-left: 18px; font-size: 12px; color: var(--gray-600); display: flex; flex-direction: column; gap: 3px; }
+.bp-note { margin: 10px 0 0; font-size: 11px; color: var(--gray-400); }
+.bp-error { margin: 0; font-size: 12px; color: #b91c1c; }
+
+/* Site icon thumbnails (favicon over the letter initial) */
+.site-list-icon,
+.site-favicon { position: relative; overflow: hidden; }
+.site-icon-img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    padding: 4px;
+    background: #fff;
+}
+
+/* Crawl failure reason inside site list items */
+.site-list-error {
+    flex-basis: 100%;
+    font-size: 11px;
+    color: #b91c1c;
+    padding: 4px 10px 8px 46px;
+    line-height: 1.3;
+    word-break: break-word;
+}

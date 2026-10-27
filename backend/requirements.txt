@@ -74,3 +74,6 @@ pytest-asyncio>=0.23.0
 pytest-cov>=4.1.0
 pytest-mock>=3.12.0
 httpx>=0.26.0
+
+# Headless browser rendering for JS/SPA sites (crawler)
+playwright>=1.40.0

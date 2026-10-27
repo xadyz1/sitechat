@@ -46,6 +46,7 @@ from app.routes.leads import router as leads_router
 from app.routes.helpcenter import router as helpcenter_router
 from app.routes.notifications import router as notifications_router
 from app.routes.portal import router as portal_router
+from app.routes.branding import router as branding_router
 from app.services.auth import AuthService
 from app.services.scheduler import get_scheduler
 
@@ -199,6 +200,7 @@ app.include_router(leads_router)
 app.include_router(helpcenter_router)
 app.include_router(notifications_router)
 app.include_router(portal_router)
+app.include_router(branding_router)
 
 # Serve static files (frontend)
 # Get the absolute path to the frontend directory

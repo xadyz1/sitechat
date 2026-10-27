@@ -1506,6 +1506,11 @@
                         <input type="url" id="site-url" placeholder="https://example.com" required>
                         <span class="field-hint">Enter the full URL of your website</span>
                     </div>
+                    <div class="brand-fetch-row">
+                        <button type="button" class="btn btn-secondary btn-sm fetch-brand-btn" data-url-input="site-url" data-name-input="site-name" data-preview="brand-preview">Fetch brand info</button>
+                        <span class="field-hint">Detect brand colours, icon, language &amp; suggested questions</span>
+                    </div>
+                    <div id="brand-preview" class="brand-preview" hidden></div>
                     <div class="form-field">
                         <label for="site-name">Display Name <span class="optional">(optional)</span></label>
                         <input type="text" id="site-name" placeholder="My Website">
@@ -1585,6 +1590,11 @@
                             <label for="both-site-url">Website URL</label>
                             <input type="url" id="both-site-url" placeholder="https://example.com" required>
                         </div>
+                        <div class="brand-fetch-row">
+                            <button type="button" class="btn btn-secondary btn-sm fetch-brand-btn" data-url-input="both-site-url" data-name-input="both-site-name" data-preview="brand-preview-both">Fetch brand info</button>
+                            <span class="field-hint">Detect brand colours, icon, language &amp; suggested questions</span>
+                        </div>
+                        <div id="brand-preview-both" class="brand-preview" hidden></div>
                         <div class="form-field">
                             <label for="both-site-name">Display Name</label>
                             <input type="text" id="both-site-name" placeholder="My Website" required>

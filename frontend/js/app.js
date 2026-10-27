@@ -433,6 +433,10 @@ function setupEventListeners() {
     document.getElementById('both-form')?.addEventListener('submit', handleBothSubmit);
     // member-form submit is wired in initTeamView
     
+    // Brand detection buttons
+    document.querySelectorAll('.fetch-brand-btn').forEach(btn =>
+        btn.addEventListener('click', () => fetchBrandInfo(btn)));
+
     // File upload zones
     setupUploadZone('upload-zone', 'file-input', 'file-list', 'selectedFiles');
     setupUploadZone('upload-zone-both', 'file-input-both', 'file-list-both', 'selectedFilesBoth');
@@ -540,13 +544,19 @@ function createSiteListItem(site) {
     const statusText = site.status === 'completed' ? 'Ready' : site.status.charAt(0).toUpperCase() + site.status.slice(1);
     
     item.innerHTML = `
-        <div class="site-list-icon">${initial}</div>
+        <div class="site-list-icon">${initial}${site.favicon_url ? `<img class="site-icon-img" src="${escapeHtml(site.favicon_url)}" alt="" onerror="this.remove()">` : ''}</div>
         <div class="site-list-info">
             <div class="site-list-name">${site.name || domain}</div>
             <div class="site-list-url">${domain}</div>
         </div>
-        <span class="site-list-status ${statusClass}">${statusText}</span>
+        <span class="site-list-status ${statusClass}" ${site.status === 'failed' && site.error ? `title="${escapeHtml(site.error)}"` : ''}>${statusText}</span>
     `;
+    if (site.status === 'failed' && site.error) {
+        const err = document.createElement('div');
+        err.className = 'site-list-error';
+        err.textContent = site.error;
+        item.appendChild(err);
+    }
     
     return item;
 }
@@ -595,7 +605,7 @@ function createSiteCard(site) {
     card.innerHTML = `
         <div class="site-card-header">
             <div class="site-info">
-                <div class="site-favicon">${initial}</div>
+                <div class="site-favicon">${initial}${site.favicon_url ? `<img class="site-icon-img" src="${escapeHtml(site.favicon_url)}" alt="" onerror="this.remove()">` : ''}</div>
                 <div>
                     <div class="site-name">${site.name || domain}</div>
                     <div class="site-url">${domain}</div>
@@ -633,6 +643,7 @@ function createSiteCard(site) {
 }
 
 function openAddSiteModal() {
+    resetBrandState();
     elements.addSiteModal.classList.add('active');
     showSourceTypeStep();
 }
@@ -887,6 +898,8 @@ async function handleWebsiteSubmit(e) {
         closeAddSiteModal();
         await loadSites();
         pollSiteStatus(setupData.site_id);
+        const websiteBrand = detectedBrands['site-url'] || await fetchBrandInfoQuiet(url);
+        if (websiteBrand) applyBrandToSite(setupData.site_id, websiteBrand);
         
     } catch (error) {
         console.error('Failed to add site:', error);
@@ -1002,6 +1015,8 @@ async function handleBothSubmit(e) {
         closeAddSiteModal();
         await loadSites();
         pollSiteStatus(setupData.site_id);
+        const bothBrand = detectedBrands['both-site-url'] || await fetchBrandInfoQuiet(url);
+        if (bothBrand) applyBrandToSite(setupData.site_id, bothBrand);
         
     } catch (error) {
         console.error('Failed to create chatbot:', error);
@@ -1010,6 +1025,108 @@ async function handleBothSubmit(e) {
         submitBtn.classList.remove('loading');
         submitBtn.disabled = false;
     }
+}
+
+// ── Brand detection (add-site modal) ──────────────────────────────
+const detectedBrands = {}; // keyed by url-input id
+
+async function fetchBrandInfo(btn) {
+    const urlInput = document.getElementById(btn.dataset.urlInput);
+    const preview = document.getElementById(btn.dataset.preview);
+    const url = (urlInput?.value || '').trim();
+    if (!/^https?:\/\//.test(url)) {
+        alert('Enter a valid website URL first (https://…)');
+        urlInput?.focus();
+        return;
+    }
+    btn.disabled = true;
+    const label = btn.textContent;
+    btn.textContent = 'Detecting…';
+    try {
+        const res = await fetch(`${API_BASE}/brand-info`, {
+            method: 'POST',
+            headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Could not detect brand info');
+        detectedBrands[btn.dataset.urlInput] = data;
+        renderBrandPreview(preview, data);
+        const nameInput = document.getElementById(btn.dataset.nameInput);
+        if (nameInput && !nameInput.value.trim() && data.name) nameInput.value = data.name;
+    } catch (e) {
+        detectedBrands[btn.dataset.urlInput] = null;
+        if (preview) { preview.hidden = false; preview.innerHTML = `<p class="bp-error">${escapeHtml(e.message)}</p>`; }
+    } finally {
+        btn.disabled = false;
+        btn.textContent = label;
+    }
+}
+
+function renderBrandPreview(preview, data) {
+    if (!preview) return;
+    const swatches = (data.colors?.palette || [])
+        .map(c => `<span class="bp-swatch" style="background:${escapeHtml(c)}" title="${escapeHtml(c)}"></span>`).join('');
+    const questions = (data.suggested_questions || [])
+        .map(q => `<li>${escapeHtml(q.icon || '')} ${escapeHtml(q.text)}</li>`).join('');
+    preview.hidden = false;
+    preview.innerHTML = `
+        <div class="bp-head">
+            ${data.favicon ? `<img class="bp-icon" src="${escapeHtml(data.favicon)}" alt="" onerror="this.style.display='none'">` : ''}
+            <strong>${escapeHtml(data.name || '')}</strong>
+            <span class="bp-lang">${escapeHtml(data.language || 'en')}</span>
+        </div>
+        ${swatches ? `<div class="bp-colors">${swatches}</div>` : ''}
+        ${questions ? `<ul class="bp-questions">${questions}</ul>` : ''}
+        <p class="bp-note">These will be applied to the widget when the chatbot is created.</p>`;
+}
+
+async function fetchBrandInfoQuiet(url) {
+    try {
+        const res = await fetch(`${API_BASE}/brand-info`, {
+            method: 'POST',
+            headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url })
+        });
+        return res.ok ? await res.json() : null;
+    } catch {
+        return null;
+    }
+}
+
+async function applyBrandToSite(siteId, brand) {
+    const headers = { ...getAuthHeaders(), 'Content-Type': 'application/json' };
+    const put = (path, payload) => fetch(`${API_BASE}${path}`, {
+        method: 'PUT', headers, body: JSON.stringify(payload)
+    }).catch(e => console.warn('brand apply failed:', path, e));
+    try {
+        await put(`/sites/${siteId}/meta`, { favicon_url: brand.favicon || null });
+        await put(`/sites/${siteId}/config`, {
+            appearance: {
+                ...(brand.colors?.primary ? { primary_color: brand.colors.primary } : {}),
+                ...(brand.favicon ? { bot_avatar_url: brand.favicon } : {})
+            },
+            help_center: {
+                default_locale: brand.language || 'en',
+                locales: [brand.language || 'en']
+            }
+        });
+        if (brand.suggested_questions?.length) {
+            await put(`/sites/${siteId}/quick-prompts`, {
+                enabled: true,
+                prompts: brand.suggested_questions.map(q => ({ text: q.text, icon: q.icon, type: 'suggestion', enabled: true })),
+                max_display: 4
+            });
+        }
+        await loadSites();
+    } catch (e) {
+        console.warn('Auto brand apply failed:', e);
+    }
+}
+
+function resetBrandState() {
+    Object.keys(detectedBrands).forEach(k => delete detectedBrands[k]);
+    document.querySelectorAll('.brand-preview').forEach(p => { p.hidden = true; p.innerHTML = ''; });
 }
 
 function generateSiteId(name) {
