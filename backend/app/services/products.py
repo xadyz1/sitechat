@@ -320,7 +320,8 @@ def match_products(answer: str, products: List[Dict], limit: int = 4) -> List[Di
     hits.sort(key=lambda h: (-h[0], not h[1], len(_norm(h[2].get("name", "")))))
     out, seen, taken_exact, taken_partial_scores = [], set(), [], {}
     for score, exact, p in hits:
-        if p["url"] in seen:
+        key = p.get("url") or p.get("name") or ""
+        if key in seen:
             continue
         name = _norm(p.get("name", ""))
         # "Oversized tee" shouldn't fire just because "Brand Oversized tee" was
@@ -338,7 +339,7 @@ def match_products(answer: str, products: List[Dict], limit: int = 4) -> List[Di
             taken_exact.append(name)
         else:
             taken_partial_scores[score] = name
-        seen.add(p["url"])
+        seen.add(key)
         out.append({k: p.get(k) for k in ("name", "url", "image", "price", "currency", "product_id", "platform")})
         if len(out) >= limit:
             break
