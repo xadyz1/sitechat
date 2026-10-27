@@ -107,7 +107,32 @@ async def lifespan(app: FastAPI):
         # Ensure default admin exists (if configured)
         auth_service = AuthService(mongodb)
         await auth_service.ensure_admin_exists()
-        
+
+        # Recover crawls orphaned by the previous process — background tasks
+        # die with the container, leaving jobs stuck at "running" forever.
+        try:
+            orphaned = await mongodb.db.crawl_jobs.find({"status": "running"}).to_list(100)
+            if orphaned:
+                import asyncio
+                from app.routes.embed import crawl_and_index_site
+                for job in orphaned:
+                    await mongodb.update_crawl_job(
+                        str(job["_id"]),
+                        status="failed",
+                        error="Interrupted by app restart"
+                    )
+                    url = job.get("target_url")
+                    if url:
+                        site = await mongodb.db.sites.find_one({"url": url})
+                        if site:
+                            asyncio.create_task(
+                                crawl_and_index_site(url, site["site_id"], 150)
+                            )
+                            logger.info(f"Re-queued interrupted crawl for {url}")
+                logger.info(f"Recovered {len(orphaned)} interrupted crawl job(s)")
+        except Exception as e:
+            logger.error(f"Crawl recovery sweep failed: {e}")
+
         # Initialize and start the scheduler
         from app.routes.schedule import _execute_crawl_job
         scheduler = get_scheduler()
