@@ -8957,6 +8957,11 @@ async function saveSecurityConfig() {
     btn.disabled = true;
     
     try {
+        // Pick up a domain the user typed but never pressed "Add" for
+        if ((document.getElementById('security-new-domain')?.value || '').trim()) {
+            addDomain();
+        }
+
         const securityConfig = {
             enforce_domain_validation: document.getElementById('security-enforce-domain')?.checked || false,
             allowed_domains: securityAllowedDomains,
