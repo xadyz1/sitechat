@@ -409,8 +409,10 @@ class AuthService:
         # Check if admin exists using provider interface
         admin = await self._provider.get_user_by_email(settings.ADMIN_EMAIL) if settings.ADMIN_EMAIL else None
         
-        # Also check by role if we have that method
-        if not admin and hasattr(self._provider, 'get_user_by_role'):
+        # Fall back to any admin only when no explicit credentials are configured —
+        # an explicit ADMIN_EMAIL + ADMIN_PASSWORD must always be honoured, so a
+        # changed ADMIN_EMAIL on an existing install still gets its account created.
+        if not admin and not settings.ADMIN_PASSWORD and hasattr(self._provider, 'get_user_by_role'):
             admin = await self._provider.get_user_by_role("admin")
         
         if admin and admin.get("role") == "admin":
