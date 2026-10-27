@@ -204,10 +204,25 @@
   }
 
   // --- Remote site config + theme overrides (accent color from API) ---
+  function sleepMs(ms) {
+    return new Promise((r) => setTimeout(r, ms));
+  }
+
   async function fetchSiteConfig() {
+    // The embed often loads while the API is redeploying or busy; retry a few
+    // times before giving up so the widget doesn't stick on defaults forever.
+    let res = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        res = await fetch(config.apiUrl + "/api/sites/" + config.siteId + "/config");
+        if (res["ok"] || res["status"] === 404) break;
+      } catch (I) {
+        res = null;
+      }
+      if (attempt < 2) await sleepMs(1500 * (attempt + 1));
+    }
     try {
-      const res = await fetch(config.apiUrl + "/api/sites/" + config.siteId + "/config");
-      if (res["ok"]) {
+      if (res && res["ok"]) {
         const data = await res["json"]();
         applyAppearanceConfig(data["appearance"] || {});
         if (data["behavior"]) config.showSources = data["behavior"]["show_sources"] !== false;
@@ -252,8 +267,10 @@
         refreshWidgetUI();
         applyVisibility();
         scheduleStartMode();
-      } else if (res["status"] === 404) {
+      } else if (res && res["status"] === 404) {
         try { widgetRoot["style"]["display"] = "none"; } catch (e) {}
+      } else if (!res) {
+        console["warn"]("Could not fetch site config, using defaults");
       }
     } catch (I) {
       console["warn"]("Could not fetch site config, using defaults:", I);
