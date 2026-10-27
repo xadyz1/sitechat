@@ -72,8 +72,13 @@ class OllamaService:
         return {"Authorization": f"Bearer {self.api_key or 'none'}", "Content-Type": "application/json"}
 
     def _openai_payload(self, messages, temperature, max_tokens, stream):
-        return {"model": self.model, "messages": messages, "temperature": temperature,
-                "max_tokens": max_tokens, "stream": stream}
+        payload = {"model": self.model, "messages": messages, "temperature": temperature,
+                   "max_tokens": max_tokens, "stream": stream}
+        # gpt-oss models on Groq spend tokens on hidden reasoning and can return
+        # empty content; keep it cheap so the answer budget goes to the reply.
+        if "gpt-oss" in (self.model or ""):
+            payload["reasoning_effort"] = "low"
+        return payload
 
     def _openai_error(self, response: httpx.Response) -> str:
         body = (response.text or "").strip()[:500]
