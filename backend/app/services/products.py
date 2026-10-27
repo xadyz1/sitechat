@@ -259,8 +259,12 @@ def site_domain(url: str) -> str:
     return host[4:] if host.startswith("www.") else host
 
 
+_HYPHENS = dict.fromkeys(map(ord, "‐‑‒–—−﹘﹣－︲"), "-")
+
+
 def _norm(s: str) -> str:
-    s = unicodedata.normalize("NFKD", s or "").encode("ascii", "ignore").decode()
+    s = unicodedata.normalize("NFKD", (s or "").translate(_HYPHENS))
+    s = re.sub(r"[^\x00-\x7f]", " ", s)
     s = re.sub(r"[\"'“”‘’]", "", s.lower())
     return re.sub(r"[^a-z0-9]+", " ", s).strip()
 
