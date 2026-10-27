@@ -1,0 +1,74 @@
+services:
+  app:
+    build: .
+    container_name: swiftchat-app
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    environment:
+      # Required — set these in Coolify (or a .env next to this file)
+      MONGODB_URL: ${MONGODB_URL:-mongodb://mongo:27017}
+      MONGODB_DB: ${MONGODB_DB:-SiteChat}
+      DATABASE_PROVIDER: ${DATABASE_PROVIDER:-mongodb}
+      SITE_URL: ${SITE_URL:-http://localhost:8000}
+      TRUSTED_HOSTS: ${TRUSTED_HOSTS:-*}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in Coolify env vars}
+      MASTER_ADMIN_EMAIL: ${MASTER_ADMIN_EMAIL:-}
+      LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
+      LLM_MODEL: ${LLM_MODEL:-qwen2.5-coder:3b}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:-}
+      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT:-}
+      EMBEDDINGS_PROVIDER: ${EMBEDDINGS_PROVIDER:-huggingface}
+      EMBEDDINGS_MODEL: ${EMBEDDINGS_MODEL:-all-MiniLM-L6-v2}
+      VECTOR_STORE_PROVIDER: ${VECTOR_STORE_PROVIDER:-faiss}
+      ONESIGNAL_APP_ID: ${ONESIGNAL_APP_ID:-}
+      ONESIGNAL_REST_API_KEY: ${ONESIGNAL_REST_API_KEY:-}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_PRICE_BASIC_MONTHLY: ${STRIPE_PRICE_BASIC_MONTHLY:-}
+      STRIPE_PRICE_BASIC_YEARLY: ${STRIPE_PRICE_BASIC_YEARLY:-}
+      STRIPE_PRICE_ADVANCED_MONTHLY: ${STRIPE_PRICE_ADVANCED_MONTHLY:-}
+      STRIPE_PRICE_ADVANCED_YEARLY: ${STRIPE_PRICE_ADVANCED_YEARLY:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+    volumes:
+      - swiftchat-data:/app/backend/data
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+  mongo:
+    image: mongo:7
+    container_name: swiftchat-mongo
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  # Optional local LLM — start with: docker compose --profile ollama up -d
+  # Then run once: docker compose exec ollama ollama pull qwen2.5-coder:3b
+  # Or skip this service and point OLLAMA_BASE_URL / OPENAI_API_KEY elsewhere.
+  ollama:
+    image: ollama/ollama:latest
+    container_name: swiftchat-ollama
+    restart: unless-stopped
+    profiles: ["ollama"]
+    volumes:
+      - ollama-data:/root/.ollama
+    ports:
+      - "11434:11434"
+
+volumes:
+  swiftchat-data:
+  mongo-data:
+  ollama-data:

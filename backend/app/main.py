@@ -149,6 +149,10 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Security middleware (order matters - outermost first)
+# 0. Response compression (large JS/CSS bundles)
+from fastapi.middleware.gzip import GZipMiddleware
+app.add_middleware(GZipMiddleware, minimum_size=2048)
+
 # 1. Security headers
 app.add_middleware(SecurityHeadersMiddleware)
 
