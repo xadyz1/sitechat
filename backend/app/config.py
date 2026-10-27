@@ -19,14 +19,10 @@ class Settings(BaseSettings):
     # ===========================================
     # Security Settings
     # ===========================================
-    # CORS - comma-separated list of allowed origins
-    CORS_ORIGINS: str = (
-        "http://localhost:3000,http://localhost:8000,http://127.0.0.1:8000,"
-        "http://localhost:8015,http://127.0.0.1:8015,"
-        "http://localhost:8012,http://127.0.0.1:8012,"
-        # Default HTTP port (80): browsers send Origin without an explicit port
-        "http://127.0.0.1,http://localhost"
-    )
+    # CORS - comma-separated list of allowed origins.
+    # Default "*" because the chat widget is embedded on arbitrary customer
+    # domains; per-site security.allowed_domains is the real gate for chat.
+    CORS_ORIGINS: str = "*"
     CORS_ALLOW_CREDENTIALS: bool = True
     # Match loopback on any port (CORS Origin is exact; http://127.0.0.1 does not match :8012).
     # Set to empty string in .env to disable.
