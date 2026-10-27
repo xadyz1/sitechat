@@ -436,6 +436,7 @@ function setupEventListeners() {
     // Brand detection buttons
     document.querySelectorAll('.fetch-brand-btn').forEach(btn =>
         btn.addEventListener('click', () => fetchBrandInfo(btn)));
+    document.getElementById('fetch-brand-site')?.addEventListener('click', fetchSiteBrand);
 
     // File upload zones
     setupUploadZone('upload-zone', 'file-input', 'file-list', 'selectedFiles');
@@ -1121,6 +1122,34 @@ async function applyBrandToSite(siteId, brand) {
         await loadSites();
     } catch (e) {
         console.warn('Auto brand apply failed:', e);
+    }
+}
+
+async function fetchSiteBrand() {
+    if (!currentDetailSite?.url) return;
+    const preview = document.getElementById('brand-preview-detail');
+    const btn = document.getElementById('fetch-brand-site');
+    btn.disabled = true;
+    if (preview) { preview.hidden = false; preview.innerHTML = '<p class="bp-note">Detecting brand…</p>'; }
+    try {
+        const data = await fetchBrandInfoQuiet(currentDetailSite.url);
+        if (!data) throw new Error('Could not detect brand info for this site');
+        renderBrandPreview(preview, data);
+        preview.insertAdjacentHTML('beforeend',
+            '<div class="bp-actions"><button type="button" class="btn btn-primary btn-sm" id="bp-apply">Apply to this site</button>' +
+            '<button type="button" class="btn btn-ghost btn-sm" id="bp-dismiss">Dismiss</button></div>');
+        preview.querySelector('#bp-apply').addEventListener('click', async (e) => {
+            e.target.disabled = true;
+            e.target.textContent = 'Applying…';
+            await applyBrandToSite(currentDetailSite.site_id, data);
+            preview.hidden = true;
+            openSiteDetails(currentDetailSite);
+        });
+        preview.querySelector('#bp-dismiss').addEventListener('click', () => { preview.hidden = true; });
+    } catch (e) {
+        preview.innerHTML = `<p class="bp-error">${escapeHtml(e.message)}</p>`;
+    } finally {
+        btn.disabled = false;
     }
 }
 
