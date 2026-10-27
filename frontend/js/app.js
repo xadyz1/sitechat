@@ -1863,6 +1863,22 @@ function getAppearanceTabContent() {
                             <label for="config-welcome">Welcome Message</label>
                             <textarea id="config-welcome" placeholder="Hi! How can I help you today?" class="form-textarea" rows="2">${escapeHtml(a.welcome_message || '')}</textarea>
                         </div>
+                        <div class="form-group form-checkbox">
+                            <input type="checkbox" id="config-welcome-enabled" ${a.welcome_enabled !== false ? 'checked' : ''}>
+                            <label for="config-welcome-enabled">Show Welcome Screen</label>
+                        </div>
+                        <div class="form-group">
+                            <label for="config-welcome-title">Welcome Title</label>
+                            <input type="text" id="config-welcome-title" placeholder="Hi there! 👋" value="${escapeHtml(a.welcome_title || '')}" class="form-input">
+                        </div>
+                        <div class="form-group">
+                            <label for="config-welcome-icon">Welcome Icon</label>
+                            <select id="config-welcome-icon" class="form-input">
+                                <option value="default" ${(a.welcome_icon || 'default') === 'default' ? 'selected' : ''}>Default icon</option>
+                                <option value="avatar" ${a.welcome_icon === 'avatar' ? 'selected' : ''}>Agent profile picture</option>
+                                <option value="none" ${a.welcome_icon === 'none' ? 'selected' : ''}>Hidden</option>
+                            </select>
+                        </div>
                     </div>
                 </details>
 
@@ -4421,6 +4437,9 @@ function getDefaultConfig() {
             primary_color: '#7B3DFB',
             chat_title: 'Chat with us',
             welcome_message: 'Hi! How can I help you today?',
+            welcome_title: 'Hi there! 👋',
+            welcome_icon: 'default',
+            welcome_enabled: true,
             bot_avatar_url: null,
             position: 'bottom-right',
             agent_caption: 'Powered by AI',
@@ -4504,6 +4523,10 @@ function populateConfigForm(config) {
     setVal('config-agent-caption', appearance.agent_caption || 'Powered by AI');
     setVal('config-avatar-url', appearance.bot_avatar_url || '');
     setVal('config-welcome', appearance.welcome_message || 'Hi! How can I help you today?');
+    setVal('config-welcome-title', appearance.welcome_title || 'Hi there! 👋');
+    setVal('config-welcome-icon', appearance.welcome_icon || 'default');
+    const welcomeCb = document.getElementById('config-welcome-enabled');
+    if (welcomeCb) welcomeCb.checked = appearance.welcome_enabled !== false;
     setVal('config-position', appearance.position || 'bottom-right');
     setVal('config-offset-x', appearance.offset_x ?? 24);
     setVal('config-offset-y', appearance.offset_y ?? 24);
@@ -4648,6 +4671,9 @@ function getConfigFromForm() {
             primary_color: val('config-color') || '#7B3DFB',
             chat_title: val('config-title') || 'Chat with us',
             welcome_message: val('config-welcome') || 'Hi! How can I help you today?',
+            welcome_title: val('config-welcome-title') || 'Hi there! 👋',
+            welcome_icon: val('config-welcome-icon') || 'default',
+            welcome_enabled: checked('config-welcome-enabled') !== false,
             bot_avatar_url: val('config-avatar-url')?.trim() || null,
             position: val('config-position') || 'bottom-right',
             hide_branding: checked('config-hide-branding') || false,
