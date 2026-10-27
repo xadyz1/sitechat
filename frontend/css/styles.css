@@ -11769,3 +11769,23 @@ body.is-master .is-master-only { display: flex !important; }
     margin: -4px 0 6px;
     font-size: 0.8rem;
 }
+
+/* Platform user management form */
+.platform-user-form {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 14px;
+    margin-bottom: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.platform-user-form .field-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+}
+.platform-user-form .form-group { display: flex; flex-direction: column; gap: 4px; }
+.platform-user-form .form-group label { font-size: 12px; font-weight: 600; color: #475569; }
+.platform-user-actions { white-space: nowrap; display: flex; gap: 4px; }

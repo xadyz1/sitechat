@@ -11118,6 +11118,8 @@ async function initPlatformView() {
         switchView('sites');
         return;
     }
+    bindPlatformUserForm();
+    bindPlatformDeletePanel();
     await Promise.all([loadPlatformStats(), loadPlatformUsers(), loadPlatformPlans(), loadLandingConfig()]);
 }
 
@@ -11148,26 +11150,36 @@ async function loadPlatformUsers() {
         if (!res.ok) throw new Error('load failed');
         const data = await res.json();
         const users = data.users || [];
+        platformUsers = users;
         if (!users.length) {
-            tbody.innerHTML = '<tr><td colspan="5" class="table-empty">No users yet.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" class="table-empty">No users yet.</td></tr>';
             return;
         }
         const planOpts = (sel) => platformPlans
             .map(p => `<option value="${p.id}" ${p.id === sel ? 'selected' : ''}>${p.name}</option>`).join('');
         tbody.innerHTML = users.map(u => `
             <tr>
-                <td><strong>${escapeHtml(u.name || u.email || '')}</strong><br><small class="muted">${escapeHtml(u.email || '')}</small></td>
+                <td><strong>${escapeHtml(u.name || u.email || '')}</strong><br><small class="muted">${escapeHtml(u.email || '')}</small>
+                    ${u.is_active === false ? '<span class="badge badge-off">suspended</span>' : ''}</td>
                 <td>${escapeHtml(u.role || '')}${u.is_master ? ' · <em>master</em>' : ''}</td>
                 <td><select class="plan-select" data-user="${u.id}" ${u.is_master ? 'disabled' : ''}>${planOpts(u.plan || 'trial')}</select></td>
                 <td>${u.site_count ?? 0}</td>
                 <td>${u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}</td>
+                <td class="platform-user-actions">
+                    ${u.is_master ? '' : `<button class="btn btn-ghost btn-sm" data-edit-user="${u.id}">Edit</button>
+                    <button class="btn btn-ghost btn-sm" data-del-user="${u.id}">Delete</button>`}
+                </td>
             </tr>`).join('');
 
         tbody.querySelectorAll('.plan-select').forEach(sel => {
             sel.addEventListener('change', () => updateUserPlan(sel.dataset.user, sel.value));
         });
+        tbody.querySelectorAll('[data-edit-user]').forEach(b =>
+            b.addEventListener('click', () => openUserForm(b.dataset.editUser)));
+        tbody.querySelectorAll('[data-del-user]').forEach(b =>
+            b.addEventListener('click', () => deletePlatformUser(b.dataset.delUser)));
     } catch (e) {
-        tbody.innerHTML = '<tr><td colspan="5" class="table-empty">Failed to load users.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="table-empty">Failed to load users.</td></tr>';
     }
 }
 
@@ -11281,5 +11293,122 @@ async function saveLandingConfig() {
         if (status) status.textContent = 'Failed to save landing config.';
     } finally {
         if (btn) { btn.disabled = false; btn.textContent = 'Save landing config'; }
+    }
+}
+
+// ---- Platform: user management (add / edit / delete) ----
+let platformUsers = [];
+let platformUserFormBound = false;
+
+function openUserForm(userId) {
+    const form = document.getElementById('platform-user-form');
+    if (!form) return;
+    const saveBtn = document.getElementById('pu-save');
+    const pwHint = document.getElementById('pu-pw-hint');
+    const pwInput = document.getElementById('pu-password');
+    const planSel = document.getElementById('pu-plan');
+    if (planSel && !planSel.options.length) {
+        planSel.innerHTML = platformPlans.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+    }
+    const u = userId ? platformUsers.find(x => x.id === userId) : null;
+    document.getElementById('pu-id').value = u?.id || '';
+    document.getElementById('pu-name').value = u?.name || '';
+    document.getElementById('pu-email').value = u?.email || '';
+    document.getElementById('pu-role').value = u?.role || 'user';
+    if (planSel) planSel.value = u?.plan || 'trial';
+    pwInput.value = '';
+    pwInput.required = !u;
+    if (pwHint) pwHint.textContent = u ? '(leave blank to keep)' : '(min 8 chars)';
+    const activeGroup = document.getElementById('pu-active-group');
+    if (activeGroup) activeGroup.hidden = !u;
+    document.getElementById('pu-active').checked = u ? u.is_active !== false : true;
+    if (saveBtn) saveBtn.textContent = u ? 'Save changes' : 'Create user';
+    form.hidden = false;
+    document.getElementById('pu-name')?.focus();
+}
+
+function closeUserForm() {
+    const form = document.getElementById('platform-user-form');
+    if (form) { form.hidden = true; form.reset(); }
+    document.getElementById('pu-id').value = '';
+}
+
+function bindPlatformUserForm() {
+    if (platformUserFormBound) return;
+    platformUserFormBound = true;
+    document.getElementById('platform-user-add')?.addEventListener('click', () => openUserForm(null));
+    document.getElementById('pu-cancel')?.addEventListener('click', closeUserForm);
+    document.getElementById('platform-user-form')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const id = document.getElementById('pu-id').value;
+        const password = document.getElementById('pu-password').value;
+        const payload = {
+            name: document.getElementById('pu-name').value.trim(),
+            email: document.getElementById('pu-email').value.trim(),
+            role: document.getElementById('pu-role').value,
+            plan: document.getElementById('pu-plan').value
+        };
+        if (password) payload.password = password;
+        if (id) payload.is_active = document.getElementById('pu-active').checked;
+        const saveBtn = document.getElementById('pu-save');
+        saveBtn.disabled = true;
+        try {
+            const res = await fetch(id ? `${API_BASE}/platform/users/${id}` : `${API_BASE}/platform/users`, {
+                method: id ? 'PUT' : 'POST',
+                headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.detail || 'Failed to save user');
+            closeUserForm();
+            await loadPlatformUsers();
+        } catch (err) {
+            alert(err.message || 'Failed to save user.');
+        } finally {
+            saveBtn.disabled = false;
+        }
+    });
+}
+
+function deletePlatformUser(userId) {
+    const u = platformUsers.find(x => x.id === userId);
+    const panel = document.getElementById('platform-user-delete');
+    if (!panel) return;
+    document.getElementById('pu-del-text').innerHTML =
+        `Delete <strong>${escapeHtml(u?.email || 'this user')}</strong> (${u?.site_count ?? 0} site(s))?` +
+        ' Choose whether to keep their sites and agents by moving them to your account, or remove everything:';
+    panel.dataset.userId = userId;
+    panel.hidden = false;
+    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+let platformDeletePanelBound = false;
+function bindPlatformDeletePanel() {
+    const panel = document.getElementById('platform-user-delete');
+    if (!panel || platformDeletePanelBound) return;
+    platformDeletePanelBound = true;
+    const hide = () => { panel.hidden = true; delete panel.dataset.userId; };
+    document.getElementById('pu-del-cancel')?.addEventListener('click', hide);
+    document.getElementById('pu-del-transfer')?.addEventListener('click', () => confirmDeleteUser('transfer'));
+    document.getElementById('pu-del-all')?.addEventListener('click', () => {
+        if (confirm('Permanently delete this user AND all their sites, agents and data? This cannot be undone.')) {
+            confirmDeleteUser('delete');
+        }
+    });
+
+    async function confirmDeleteUser(mode) {
+        const id = panel.dataset.userId;
+        if (!id) return;
+        try {
+            const res = await fetch(`${API_BASE}/platform/users/${id}?mode=${mode}`, {
+                method: 'DELETE', headers: getAuthHeaders()
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.detail || 'Delete failed');
+            hide();
+            await Promise.all([loadPlatformUsers(), loadPlatformStats()]);
+        } catch (e) {
+            alert(e.message || 'Failed to delete user.');
+        }
     }
 }

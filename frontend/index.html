@@ -1180,15 +1180,50 @@
 
                     <div class="platform-grid">
                         <div class="settings-card">
-                            <h2 class="settings-card-title">Users</h2>
-                            <p class="settings-card-hint">Assign a subscription plan to each account.</p>
+                            <div class="settings-card-title-row">
+                                <h2 class="settings-card-title">Users</h2>
+                                <button type="button" class="btn btn-primary btn-sm" id="platform-user-add">+ Add user</button>
+                            </div>
+                            <p class="settings-card-hint">Create accounts, edit details and plans, or remove users.</p>
+
+                            <form id="platform-user-form" class="platform-user-form" hidden>
+                                <input type="hidden" id="pu-id">
+                                <div class="field-row">
+                                    <div class="form-group"><label for="pu-name">Name</label><input id="pu-name" class="form-input" required></div>
+                                    <div class="form-group"><label for="pu-email">Email</label><input id="pu-email" class="form-input" type="email" required></div>
+                                </div>
+                                <div class="field-row">
+                                    <div class="form-group"><label for="pu-role">Role</label>
+                                        <select id="pu-role" class="form-select"><option value="user">User</option><option value="admin">Admin</option><option value="agent">Agent</option></select>
+                                    </div>
+                                    <div class="form-group"><label for="pu-plan">Plan</label><select id="pu-plan" class="form-select"></select></div>
+                                    <div class="form-group"><label for="pu-password">Password <small id="pu-pw-hint">(min 8 chars)</small></label><input id="pu-password" class="form-input" type="password" autocomplete="new-password"></div>
+                                    <div class="form-group" id="pu-active-group" hidden><label>&nbsp;</label>
+                                        <label style="display:flex;align-items:center;gap:6px;font-weight:400"><input type="checkbox" id="pu-active" checked> Active</label>
+                                    </div>
+                                </div>
+                                <div style="display:flex;gap:8px">
+                                    <button type="submit" class="btn btn-primary btn-sm" id="pu-save">Create user</button>
+                                    <button type="button" class="btn btn-ghost btn-sm" id="pu-cancel">Cancel</button>
+                                </div>
+                            </form>
+
+                            <div id="platform-user-delete" class="platform-user-form" hidden>
+                                <p id="pu-del-text" style="margin:0"></p>
+                                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                                    <button type="button" class="btn btn-primary btn-sm" id="pu-del-transfer">Transfer to me &amp; delete user</button>
+                                    <button type="button" class="btn btn-ghost btn-sm" id="pu-del-all">Delete user &amp; all data</button>
+                                    <button type="button" class="btn btn-ghost btn-sm" id="pu-del-cancel">Cancel</button>
+                                </div>
+                            </div>
+
                             <div class="table-wrap">
                                 <table class="data-table" id="platform-users-table">
                                     <thead>
-                                        <tr><th>User</th><th>Role</th><th>Plan</th><th>Sites</th><th>Joined</th></tr>
+                                        <tr><th>User</th><th>Role</th><th>Plan</th><th>Sites</th><th>Joined</th><th></th></tr>
                                     </thead>
                                     <tbody id="platform-users-body">
-                                        <tr><td colspan="5" class="table-empty">Loading…</td></tr>
+                                        <tr><td colspan="6" class="table-empty">Loading…</td></tr>
                                     </tbody>
                                 </table>
                             </div>

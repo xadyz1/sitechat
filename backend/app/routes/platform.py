@@ -157,6 +157,7 @@ async def list_platform_users(user: dict = Depends(require_master)):
             "role": u.get("role"),
             "plan": u.get("plan") or "trial",
             "is_master": _is_master(u),
+            "is_active": u.get("is_active", True),
             "site_count": site_counts.get(user_key, 0) + site_counts.get(uid, 0),
             "created_at": u.get("created_at").isoformat() if isinstance(u.get("created_at"), datetime) else u.get("created_at"),
         })
@@ -308,3 +309,141 @@ async def update_landing_config(update: LandingConfigUpdate, user: dict = Depend
     updated = await db.update_landing_config(config)
     logger.info(f"Landing config updated by {user.get('email')}")
     return _landing_response(updated)
+
+
+# --------------------------- User management ---------------------------
+
+USER_ROLES = {"admin", "user", "agent"}
+
+
+class UserCreateIn(BaseModel):
+    email: str
+    name: str
+    password: str
+    role: str = "user"
+    plan: str = "trial"
+
+
+class UserUpdateIn(BaseModel):
+    name: Optional[str] = None
+    email: Optional[str] = None
+    role: Optional[str] = None
+    plan: Optional[str] = None
+    is_active: Optional[bool] = None
+    password: Optional[str] = None
+
+
+@router.post("/users")
+async def create_platform_user(data: UserCreateIn, user: dict = Depends(require_master)):
+    """Create a user account (any role, initial plan)."""
+    from app.services.auth import get_password_hash
+
+    if data.role not in USER_ROLES:
+        raise HTTPException(status_code=400, detail=f"Invalid role: {data.role}")
+    if data.plan not in {p["id"] for p in PLAN_DEFINITIONS}:
+        raise HTTPException(status_code=400, detail="Invalid plan")
+    if len(data.password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+
+    db = await get_mongodb()
+    if await db.get_user_by_email(data.email.lower().strip()):
+        raise HTTPException(status_code=400, detail="A user with this email already exists")
+
+    doc = {
+        "email": data.email.lower().strip(),
+        "name": data.name.strip(),
+        "password_hash": get_password_hash(data.password),
+        "role": data.role,
+        "plan": data.plan,
+        "is_active": True,
+        "must_change_password": True,
+        "created_at": datetime.now(timezone.utc),
+        "updated_at": datetime.now(timezone.utc),
+    }
+    uid = await db.create_user(doc)
+    logger.info(f"User {data.email} created by master {user.get('email')}")
+    return {"ok": True, "id": uid}
+
+
+@router.put("/users/{user_id}")
+async def update_platform_user(user_id: str, data: UserUpdateIn, user: dict = Depends(require_master)):
+    """Edit a user's name, email, role, plan, status or reset password."""
+    from app.services.auth import get_password_hash
+
+    db = await get_mongodb()
+    target = await db.get_user_by_id(user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    updates = {}
+    if data.name is not None:
+        updates["name"] = data.name.strip()
+    if data.email is not None:
+        email = data.email.lower().strip()
+        existing = await db.get_user_by_email(email)
+        if existing and str(existing.get("_id")) != str(target.get("_id")):
+            raise HTTPException(status_code=400, detail="Email already in use")
+        updates["email"] = email
+    if data.role is not None:
+        if data.role not in USER_ROLES:
+            raise HTTPException(status_code=400, detail=f"Invalid role: {data.role}")
+        if _is_master(target) and data.role != target.get("role"):
+            raise HTTPException(status_code=403, detail="Cannot change the master account role")
+        updates["role"] = data.role
+    if data.plan is not None:
+        if data.plan not in {p["id"] for p in PLAN_DEFINITIONS}:
+            raise HTTPException(status_code=400, detail="Invalid plan")
+        updates["plan"] = data.plan
+    if data.is_active is not None:
+        if _is_master(target) and not data.is_active:
+            raise HTTPException(status_code=403, detail="Cannot suspend the master account")
+        updates["is_active"] = data.is_active
+    if data.password:
+        if len(data.password) < 8:
+            raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+        updates["password_hash"] = get_password_hash(data.password)
+        updates["must_change_password"] = True
+
+    if not updates:
+        return {"ok": True, "unchanged": True}
+    updates["updated_at"] = datetime.now(timezone.utc)
+    await db.update_user(user_id, updates)
+    logger.info(f"User {user_id} updated by master {user.get('email')}")
+    return {"ok": True}
+
+
+@router.delete("/users/{user_id}")
+async def delete_platform_user(user_id: str, mode: str = "transfer", user: dict = Depends(require_master)):
+    """Delete a user account.
+
+    mode=transfer (default): their sites and support agents are reassigned to the
+    master account. mode=delete: their sites and agents are deleted too.
+    """
+    if mode not in ("transfer", "delete"):
+        raise HTTPException(status_code=400, detail="mode must be 'transfer' or 'delete'")
+    db = await get_mongodb()
+    target = await db.get_user_by_id(user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if _is_master(target):
+        raise HTTPException(status_code=403, detail="Cannot delete the master account")
+
+    target_oid = str(target["_id"])
+    stats = {}
+    if mode == "transfer":
+        master_oid = str(user["_id"])
+        stats["sites_transferred"] = await db.transfer_sites_to_user(target_oid, master_oid)
+        stats["agents_transferred"] = await db.transfer_agents_to_user(target_oid, master_oid)
+    else:
+        sites = await db.list_sites(user_id=target_oid)
+        for s in sites:
+            await db.delete_site(s["site_id"])
+        stats["sites_deleted"] = len(sites)
+        agents = await db.list_users_agents_for_owner(target_oid)
+        for a in agents:
+            await db.delete_user(str(a["_id"]))
+        stats["agents_deleted"] = len(agents)
+
+    await db.delete_user(user_id)
+    logger.warning(f"User {target.get('email')} deleted by master {user.get('email')} (mode={mode})")
+    return {"ok": True, **stats}
