@@ -258,6 +258,15 @@ class SiteBehaviorConfig(BaseModel):
     max_tokens: int = Field(default=500, ge=50, le=4000, description="Maximum tokens in response")
     show_sources: bool = Field(default=True, description="Show source citations")
     product_cards: bool = Field(default=True, description="Render product cards for shop items mentioned in replies")
+    shop_platform: Literal["auto", "woocommerce", "shopify", "custom", "none"] = Field(
+        default="auto",
+        description="Shop platform for add-to-cart buttons: auto-detected, woocommerce, shopify, custom template or none"
+    )
+    cart_url_template: Optional[str] = Field(
+        default=None,
+        description="Custom add-to-cart URL template with {id} {url} {base} {name} placeholders (used when shop_platform=custom, or as fallback)"
+    )
+    cart_button_label: str = Field(default="Add to cart", description="Label for the add-to-cart button on product cards")
 
 
 class SiteLeadCaptureConfig(BaseModel):

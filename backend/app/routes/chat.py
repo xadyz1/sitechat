@@ -49,19 +49,28 @@ async def check_handoff_suggestion(site_id: str, answer: str, confidence: float)
 
 async def _products_for_answer(mongodb, site_id: str, answer: str) -> list:
     """Shop products (from the crawl catalog) whose names appear in the answer."""
-    from app.services.products import match_products, site_domain
+    from app.services.products import build_cart_url, match_products, site_domain
     site = await mongodb.db.sites.find_one({"site_id": site_id}, {"url": 1, "config": 1})
     if not site:
         return []
-    if ((site.get("config") or {}).get("behavior") or {}).get("product_cards") is False:
+    behavior = (site.get("config") or {}).get("behavior") or {}
+    if behavior.get("product_cards") is False:
         return []
     domain = site_domain(site.get("url") or "")
     if not domain:
         return []
     products = await mongodb.db.products.find(
-        {"domain": domain}, {"_id": 0, "name": 1, "url": 1, "image": 1, "price": 1, "currency": 1}
+        {"domain": domain},
+        {"_id": 0, "name": 1, "url": 1, "image": 1, "price": 1, "currency": 1, "product_id": 1, "platform": 1}
     ).to_list(2000)
-    return match_products(answer, products)
+    matched = match_products(answer, products)
+    cart_label = behavior.get("cart_button_label") or "Add to cart"
+    for p in matched:
+        cart = build_cart_url(behavior, p, site.get("url") or "")
+        if cart:
+            p["cart_url"] = cart
+            p["cart_label"] = cart_label
+    return matched
 
 
 @router.post("", response_model=ChatResponse)

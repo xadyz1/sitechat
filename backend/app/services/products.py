@@ -8,7 +8,7 @@ import json
 import re
 import unicodedata
 from typing import Dict, List, Optional
-from urllib.parse import urljoin, urlparse
+from urllib.parse import quote, urljoin, urlparse
 
 from bs4 import BeautifulSoup
 from loguru import logger
@@ -49,9 +49,48 @@ def _walk_jsonld(node, out: list):
         _walk_jsonld(node["item"], out)
 
 
+def detect_platform(url: str, html: str) -> Optional[str]:
+    """Best-effort shop platform detection for add-to-cart URL building."""
+    soup = BeautifulSoup(html, "html.parser")
+    gen = soup.find("meta", attrs={"name": re.compile("generator", re.I)})
+    g = (gen.get("content") or "").lower() if gen else ""
+    head = (html or "")[:300000].lower()
+    if "woocommerce" in g or "woocommerce" in head or "add_to_cart_button" in head:
+        return "woocommerce"
+    if "shopify" in g or "cdn.shopify.com" in head or "shopify.section" in head:
+        return "shopify"
+    return None
+
+
+def _product_id(soup, url: str) -> Optional[str]:
+    """WooCommerce / Shopify product (variant) IDs when present in the markup."""
+    btn = soup.find(attrs={"data-product_id": True})
+    if btn and btn.get("data-product_id"):
+        return str(btn["data-product_id"])
+    inp = soup.find("input", attrs={"name": "add-to-cart"})
+    if inp and inp.get("value"):
+        return str(inp["value"])
+    form = soup.find("form", action=re.compile(r"/cart/add", re.I))
+    if form:
+        vid = form.find("input", attrs={"name": "id"})
+        if vid and vid.get("value"):
+            return str(vid["value"])
+    meta = soup.find("meta", property="product:retailer_item_id")
+    if meta and meta.get("content"):
+        return str(meta["content"])
+    body = soup.find("body", class_=re.compile(r"postid-\d+"))
+    if body:
+        m = re.search(r"postid-(\d+)", " ".join(body.get("class") or []))
+        if m:
+            return m.group(1)
+    return None
+
+
 def extract_products(url: str, html: str) -> List[Dict]:
     """Return product dicts found on a page: name, url, image, price, currency, description."""
     soup = BeautifulSoup(html, "html.parser")
+    platform = detect_platform(url, html)
+    pid = _product_id(soup, url)
     found: List[Dict] = []
 
     for tag in soup.find_all("script", type=re.compile("ld\\+json", re.I)):
@@ -69,6 +108,10 @@ def extract_products(url: str, html: str) -> List[Dict]:
             image = _first(n.get("image"))
             if isinstance(image, dict):
                 image = image.get("url") or image.get("contentUrl")
+            node_pid = n.get("productID") or n.get("sku") or pid
+            offer = _first(n.get("offers"))
+            if not node_pid and isinstance(offer, dict):
+                node_pid = offer.get("sku")
             found.append({
                 "name": name[:160],
                 "url": urljoin(url, n.get("url") or url),
@@ -77,6 +120,8 @@ def extract_products(url: str, html: str) -> List[Dict]:
                 "currency": currency,
                 "description": (n.get("description") or "")[:300],
                 "source": "jsonld",
+                "product_id": str(node_pid) if node_pid else None,
+                "platform": platform,
             })
 
     if not found:
@@ -100,10 +145,12 @@ def extract_products(url: str, html: str) -> List[Dict]:
                     "currency": cur.get("content") if cur else None,
                     "description": (desc.get("content") if desc else "")[:300],
                     "source": "og",
+                    "product_id": pid,
+                    "platform": platform,
                 })
 
     if not found:
-        found.extend(_heuristic_products(url, soup))
+        found.extend(_heuristic_products(url, soup, pid, platform))
 
     # Dedupe by URL+name
     seen, out = set(), []
@@ -137,7 +184,8 @@ def _price_in(text: str) -> tuple:
     return raw, cur
 
 
-def _heuristic_products(url: str, soup: BeautifulSoup) -> List[Dict]:
+def _heuristic_products(url: str, soup: BeautifulSoup, pid: Optional[str] = None,
+                        platform: Optional[str] = None) -> List[Dict]:
     """Shops without structured data: (a) a product detail page — h1 + price +
     a large non-logo image; (b) listing pages — anchors to product-like paths
     wrapping an <img alt=...>."""
@@ -169,6 +217,7 @@ def _heuristic_products(url: str, soup: BeautifulSoup) -> List[Dict]:
             out.append({
                 "name": name[:160], "url": url, "image": urljoin(url, image),
                 "price": price, "currency": cur, "description": "", "source": "heuristic",
+                "product_id": pid, "platform": platform,
             })
 
     # (b) Listing cards
@@ -200,6 +249,7 @@ def _heuristic_products(url: str, soup: BeautifulSoup) -> List[Dict]:
         out.append({
             "name": name[:160], "url": urljoin(url, href), "image": urljoin(url, src),
             "price": price, "currency": cur, "description": "", "source": "heuristic",
+            "product_id": None, "platform": platform,
         })
     return out
 
@@ -289,7 +339,40 @@ def match_products(answer: str, products: List[Dict], limit: int = 4) -> List[Di
         else:
             taken_partial_scores[score] = name
         seen.add(p["url"])
-        out.append({k: p.get(k) for k in ("name", "url", "image", "price", "currency")})
+        out.append({k: p.get(k) for k in ("name", "url", "image", "price", "currency", "product_id", "platform")})
         if len(out) >= limit:
             break
     return out
+
+
+CART_TEMPLATES = {
+    "woocommerce": "{base}/?add-to-cart={id}",
+    "shopify": "{base}/cart/{id}:1",
+}
+
+
+def build_cart_url(behavior: Dict, product: Dict, site_url: str) -> Optional[str]:
+    """Add-to-cart deep link for a matched product, or None when not possible.
+
+    behavior.shop_platform: auto | woocommerce | shopify | custom | none
+    custom uses behavior.cart_url_template with {id} {url} {base} {name} placeholders.
+    """
+    platform = (behavior.get("shop_platform") or "auto")
+    if platform == "none":
+        return None
+    if platform == "custom":
+        tpl = (behavior.get("cart_url_template") or "").strip()
+    else:
+        plat = product.get("platform") if platform == "auto" else platform
+        tpl = CART_TEMPLATES.get(plat or "") or (behavior.get("cart_url_template") or "").strip()
+    if not tpl:
+        return None
+    pid = product.get("product_id") or product.get("variant_id")
+    if "{id}" in tpl and not pid:
+        return None
+    parsed = urlparse(site_url or "")
+    base = f"{parsed.scheme}://{parsed.netloc}" if parsed.netloc else ""
+    return (tpl.replace("{id}", quote(str(pid or ""), safe=""))
+               .replace("{url}", quote(product.get("url") or "", safe=""))
+               .replace("{base}", base)
+               .replace("{name}", quote(str(product.get("name") or ""), safe="")))

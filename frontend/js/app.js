@@ -2199,7 +2199,27 @@ function getBehaviorTabContent() {
                 <input type="checkbox" id="config-product-cards" ${behavior.product_cards !== false ? 'checked' : ''}>
                 <label for="config-product-cards">Show product cards for shop items mentioned in replies</label>
             </div>
-            
+            <div class="form-group">
+                <label for="config-shop-platform">Shop Platform (add-to-cart)</label>
+                <select id="config-shop-platform" class="form-input">
+                    <option value="auto" ${(behavior.shop_platform || 'auto') === 'auto' ? 'selected' : ''}>Auto-detect</option>
+                    <option value="woocommerce" ${behavior.shop_platform === 'woocommerce' ? 'selected' : ''}>WooCommerce</option>
+                    <option value="shopify" ${behavior.shop_platform === 'shopify' ? 'selected' : ''}>Shopify</option>
+                    <option value="custom" ${behavior.shop_platform === 'custom' ? 'selected' : ''}>Custom URL template</option>
+                    <option value="none" ${behavior.shop_platform === 'none' ? 'selected' : ''}>No add-to-cart</option>
+                </select>
+                <small class="form-help">Product cards get an "Add to cart" button when the platform is detected or a template is set</small>
+            </div>
+            <div class="form-group" id="cart-template-group" style="display:${behavior.shop_platform === 'custom' ? '' : 'none'}">
+                <label for="config-cart-template">Cart URL Template</label>
+                <input type="text" id="config-cart-template" placeholder="{base}/cart?add={id}" value="${escapeHtml(behavior.cart_url_template || '')}" class="form-input">
+                <small class="form-help">Placeholders: {id} product ID, {url} product URL, {base} site origin, {name} product name</small>
+            </div>
+            <div class="form-group">
+                <label for="config-cart-label">Add-to-cart Button Label</label>
+                <input type="text" id="config-cart-label" placeholder="Add to cart" value="${escapeHtml(behavior.cart_button_label || '')}" class="form-input">
+            </div>
+
             <div class="form-actions">
                 <button type="button" class="btn btn-primary btn-sm" id="save-config">Save Changes</button>
             </div>
@@ -4495,7 +4515,11 @@ function getDefaultConfig() {
             system_prompt: 'You are a helpful assistant. Answer questions based on the provided context.',
             temperature: 0.7,
             max_tokens: 500,
-            show_sources: true
+            show_sources: true,
+            product_cards: true,
+            shop_platform: 'auto',
+            cart_url_template: null,
+            cart_button_label: 'Add to cart'
         },
         lead_capture: {
             collect_email: false,
@@ -4654,6 +4678,14 @@ function populateConfigForm(config) {
     if (showSourcesCheckbox) showSourcesCheckbox.checked = behavior.show_sources !== false;
     const productCardsCheckbox = document.getElementById('config-product-cards');
     if (productCardsCheckbox) productCardsCheckbox.checked = behavior.product_cards !== false;
+    setVal('config-shop-platform', behavior.shop_platform || 'auto');
+    setVal('config-cart-template', behavior.cart_url_template || '');
+    setVal('config-cart-label', behavior.cart_button_label || 'Add to cart');
+    const tplGroup = document.getElementById('cart-template-group');
+    const platformSel = document.getElementById('config-shop-platform');
+    const toggleTpl = () => { if (tplGroup) tplGroup.style.display = platformSel?.value === 'custom' ? '' : 'none'; };
+    platformSel?.addEventListener('change', toggleTpl);
+    toggleTpl();
 }
 
 function getConfigFromForm() {
@@ -4723,7 +4755,10 @@ function getConfigFromForm() {
             temperature: parseFloat(val('config-temperature')) || 0.7,
             max_tokens: parseInt(val('config-max-tokens')) || 500,
             show_sources: checked('config-show-sources') ?? true,
-            product_cards: checked('config-product-cards') ?? true
+            product_cards: checked('config-product-cards') ?? true,
+            shop_platform: val('config-shop-platform') || 'auto',
+            cart_url_template: val('config-cart-template')?.trim() || null,
+            cart_button_label: val('config-cart-label')?.trim() || 'Add to cart'
         }
     };
 }
