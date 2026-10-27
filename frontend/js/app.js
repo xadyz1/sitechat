@@ -2081,6 +2081,10 @@ function getAppearanceTabContent() {
                             <label for="config-placeholder">Input Placeholder</label>
                             <input type="text" id="config-placeholder" placeholder="Type your message..." value="${escapeHtml(a.input_placeholder || '')}" class="form-input">
                         </div>
+                        <h5 class="config-subsection-title">Product Cards</h5>
+                        ${colorField('config-product-price-color', 'Price Color', a.product_price_color, primaryColor)}
+                        ${colorField('config-product-btn-color', 'Button Color', a.product_button_color, primaryColor)}
+                        ${colorField('config-product-btn-text', 'Button Text Color', a.product_button_text_color, '#FFFFFF')}
                         <h5 class="config-subsection-title">Font</h5>
                         <div class="form-group">
                             <select id="config-font" class="form-select">
@@ -4756,6 +4760,9 @@ function getConfigFromForm() {
             launcher_text: val('config-launcher-text')?.trim() || null,
             launcher_icon: val('config-launcher-icon')?.trim() || null,
             launcher_badge: checked('config-launcher-badge') || false,
+            product_price_color: autoColor('config-product-price-color'),
+            product_button_color: autoColor('config-product-btn-color'),
+            product_button_text_color: autoColor('config-product-btn-text'),
             offset_x: Math.min(200, Math.max(0, parseInt(val('config-offset-x')) || 0)),
             offset_y: Math.min(200, Math.max(0, parseInt(val('config-offset-y')) || 0)),
             movable_window: checked('config-movable-window') || false,

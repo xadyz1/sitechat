@@ -107,6 +107,9 @@
     launcherText: "Ask us anything",
     launcherIcon: scriptEl?.dataset?.launcherIcon || null,
     launcherBadge: false,
+    productPriceColor: null,
+    productButtonColor: null,
+    productButtonTextColor: null,
     offsetX: 24,
     offsetY: 24,
     movableWindow: false,
@@ -330,6 +333,9 @@
     config.startDelaySeconds = a["start_delay_seconds"] || 0;
     config.soundAgentMessage = a["sound_agent_message"] || "none";
     config.soundVisitorMessage = a["sound_visitor_message"] || "none";
+    config.productPriceColor = a["product_price_color"] || null;
+    config.productButtonColor = a["product_button_color"] || null;
+    config.productButtonTextColor = a["product_button_text_color"] || null;
   }
 
   // Re-apply all visual/widget state after config changes.
@@ -404,6 +410,9 @@
     const muted = config.footerTextColor || pal.muted;
     const sendBg = config.sendButtonColor || primary;
     const launcherBg = config.launcherBackground || primary;
+    const prodPrice = config.productPriceColor || primary;
+    const prodBtnBg = config.productButtonColor || primary;
+    const prodBtnText = config.productButtonTextColor || "#ffffff";
     const br = config.borderRadius;
     const patternCss = pal.pattern
       ? `background-color: ${chatBg} !important; background-image: url("${CHAT_PATTERN_SVG}") !important; background-size: 120px 120px !important;`
@@ -507,6 +516,10 @@
       .sitechat-launcher-icon-img { width: 28px !important; height: 28px !important; border-radius: 50%; object-fit: cover; }
       .sitechat-nudge, .sitechat-greeting { ${posRules} bottom: ${oy + 82}px !important; }
       .sitechat-card-btn.primary { background: ${primary} !important; border-color: ${primary} !important; }
+      .sitechat-product-price, .sitechat-product-cta { color: ${prodPrice} !important; }
+      .sitechat-product-btn.primary { background: ${prodBtnBg} !important; border-color: ${prodBtnBg} !important; color: ${prodBtnText} !important; }
+      .sitechat-product-btn.primary:hover { background: ${prodBtnBg} !important; }
+      .sitechat-product-btn:not(.primary) { color: ${prodBtnBg} !important; border-color: ${prodBtnBg}55 !important; }
       .sitechat-help-portal-link { color: ${primary} !important; }
       .sitechat-help-category:hover { border-color: ${primary}50 !important; }
       .sitechat-help-article-link:hover { border-color: ${primary}50 !important; color: ${primary} !important; }

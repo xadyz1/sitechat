@@ -178,6 +178,9 @@ class SiteAppearanceConfig(BaseModel):
         description="Launcher icon: built-in name (chat, headset, help, bell, star, bolt, robot, smile) or image URL/data URL"
     )
     launcher_badge: bool = Field(default=False, description="Show a red unread-message count badge on the closed launcher")
+    product_price_color: Optional[str] = Field(default=None, description="Product card price/CTA text color (hex), defaults to primary")
+    product_button_color: Optional[str] = Field(default=None, description="Product card button color (hex); primary bg and secondary text/border, defaults to primary")
+    product_button_text_color: Optional[str] = Field(default=None, description="Product card primary button text color (hex), defaults to white")
 
     # Placement & offsets (position also accepts: bottom-left, bottom-center, bottom-right)
     offset_x: int = Field(default=24, ge=0, le=200, description="Horizontal offset of the launcher/window in px")
