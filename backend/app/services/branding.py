@@ -12,6 +12,34 @@ import aiohttp
 from bs4 import BeautifulSoup
 from loguru import logger
 
+from app.config import settings
+
+
+async def _render_html(url: str) -> Optional[str]:
+    """Render a URL in headless Chromium and return the live DOM HTML."""
+    try:
+        from playwright.async_api import async_playwright
+    except ImportError:
+        return None
+    try:
+        async with async_playwright() as pw:
+            browser = await pw.chromium.launch(
+                headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"]
+            )
+            try:
+                page = await browser.new_page(user_agent="SwiftChat-BrandDetect/1.0")
+                await page.goto(url, wait_until="domcontentloaded", timeout=20000)
+                try:
+                    await page.wait_for_load_state("networkidle", timeout=8000)
+                except Exception:
+                    pass
+                return await page.content()
+            finally:
+                await browser.close()
+    except Exception as e:
+        logger.warning(f"JS render for brand detection failed ({url}): {e}")
+        return None
+
 _HEX_RE = re.compile(r"#(?:[0-9a-fA-F]{3}){1,2}\b")
 _ICON_RELS = ("apple-touch-icon", "icon", "shortcut icon", "mask-icon")
 
@@ -111,11 +139,45 @@ def _pick_icon(soup: BeautifulSoup, base_url: str) -> Optional[str]:
     return urljoin(base_url, "/favicon.ico")
 
 
-def _suggest_questions(language: str, name: str) -> List[Dict[str, str]]:
+_TOPIC_PHRASES = {
+    "en": "Tell me about {topic}",
+    "pt": "Fala-me sobre {topic}",
+    "es": "Cuéntame sobre {topic}",
+    "fr": "Parlez-moi de {topic}",
+    "de": "Erzählen Sie mir von {topic}",
+}
+
+_SKIP_HEADINGS = re.compile(
+    r"cookie|privacy|term|login|sign ?in|sign ?up|contact|menu|home|inicio|início", re.I
+)
+
+
+def _suggest_questions(language: str, name: str, soup: Optional[BeautifulSoup] = None) -> List[Dict[str, str]]:
+    """Mix content-derived questions (site headings/nav links) with generic templates."""
+    questions: List[str] = []
+
+    if soup is not None:
+        phrase = _TOPIC_PHRASES.get(language, _TOPIC_PHRASES["en"])
+        topics: List[str] = []
+        for tag in soup.select("h1, h2, nav a, header a"):
+            text = re.sub(r"\s+", " ", tag.get_text(strip=True))
+            if not text or len(text) > 40 or _SKIP_HEADINGS.search(text):
+                continue
+            if text.lower() in {t.lower() for t in topics}:
+                continue
+            topics.append(text)
+            if len(topics) >= 2:
+                break
+        questions = [phrase.format(topic=t) for t in topics]
+
     templates = _QUESTION_TEMPLATES.get(language, _QUESTION_TEMPLATES["en"])
+    questions += [t.format(name=name or "us") for t in templates]
+
+    seen = set()
+    deduped = [q for q in questions if not (q.lower() in seen or seen.add(q.lower()))][:4]
     return [
-        {"text": t.format(name=name or "us"), "icon": _QUESTION_ICONS[i]}
-        for i, t in enumerate(templates)
+        {"text": q, "icon": _QUESTION_ICONS[i % len(_QUESTION_ICONS)]}
+        for i, q in enumerate(deduped)
     ]
 
 
@@ -136,6 +198,12 @@ async def fetch_brand_info(url: str) -> Dict[str, object]:
 
     soup = BeautifulSoup(html, "html.parser")
 
+    # JS-rendered (SPA) shell? Re-fetch through headless Chromium when available.
+    if len(soup.get_text(strip=True)) < 100 and settings.CRAWLER_JS_RENDER:
+        rendered = await _render_html(final_url)
+        if rendered and len(BeautifulSoup(rendered, "html.parser").get_text(strip=True)) >= 100:
+            soup = BeautifulSoup(rendered, "html.parser")
+
     name = None
     for attrs in ({"property": "og:site_name"}, {"name": "application-name"}):
         meta = soup.find("meta", attrs=attrs)
@@ -153,5 +221,5 @@ async def fetch_brand_info(url: str) -> Dict[str, object]:
         "language": lang,
         "favicon": _pick_icon(soup, final_url),
         "colors": _pick_colours(soup),
-        "suggested_questions": _suggest_questions(lang, name or host),
+        "suggested_questions": _suggest_questions(lang, name or host, soup),
     }
