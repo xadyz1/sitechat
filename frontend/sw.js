@@ -1,6 +1,6 @@
 /* SwiftChat service worker — enables PWA installability.
    Network-first for navigations and API, cache-first for static assets. */
-const CACHE_NAME = 'swiftchat-v3';
+const CACHE_NAME = 'swiftchat-v5';
 const STATIC_ASSETS = [
   '/css/styles.css',
   '/js/app.js',

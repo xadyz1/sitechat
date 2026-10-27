@@ -71,7 +71,10 @@ class Settings(BaseSettings):
     # ===========================================
     # LLM Provider Configuration
     # ===========================================
-    LLM_PROVIDER: Literal["ollama", "openai", "anthropic", "azure"] = "ollama"
+    # ollama = native Ollama API; openai / deepseek / groq / litellm / openai_compatible =
+    # any OpenAI-compatible chat API (LiteLLM proxy, OpenRouter, Ollama's own /v1, ...)
+    LLM_PROVIDER: Literal["ollama", "openai", "deepseek", "groq", "litellm", "openai_compatible",
+                          "anthropic", "azure"] = "ollama"
     LLM_MODEL: str = "llama3.1:8b"
     LLM_TEMPERATURE: float = 0.7
     LLM_MAX_TOKENS: int = 1000
@@ -80,6 +83,8 @@ class Settings(BaseSettings):
     
     # Provider-specific API keys
     OPENAI_API_KEY: Optional[str] = None
+    # Base URL for openai / litellm / openai_compatible providers (must include /v1 when the API needs it)
+    OPENAI_BASE_URL: Optional[str] = None
     ANTHROPIC_API_KEY: Optional[str] = None
     AZURE_OPENAI_ENDPOINT: Optional[str] = None
     AZURE_OPENAI_API_KEY: Optional[str] = None

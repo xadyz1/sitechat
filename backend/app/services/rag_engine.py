@@ -155,6 +155,7 @@ class RAGEngine:
         site_name = None
         knowledge_urls: List[str] = []
         site_behavior: Dict = {}
+        catalog_addendum = ""
         if site_id:
             site = await mongodb.db.sites.find_one({"site_id": site_id})
             if site:
@@ -166,6 +167,8 @@ class RAGEngine:
                     if u.get("url")
                 ]
                 site_behavior = (site.get("config") or {}).get("behavior") or {}
+                if site_behavior.get("product_cards", True):
+                    catalog_addendum = await self._catalog_addendum(mongodb, site.get("url"))
                 logger.info(f"Filtering by site: {site_url_filter}")
         
         try:
@@ -259,6 +262,7 @@ class RAGEngine:
                 custom_prompt=site_behavior.get("system_prompt"),
                 temperature=site_behavior.get("temperature"),
                 max_tokens=site_behavior.get("max_tokens"),
+                prompt_addendum=catalog_addendum,
             )
             
             # 8. Follow-up suggestions are disabled to avoid an extra LLM call.
@@ -308,6 +312,7 @@ class RAGEngine:
         site_name = None
         knowledge_urls: List[str] = []
         site_behavior: Dict = {}
+        catalog_addendum = ""
         if site_id:
             site = await mongodb.db.sites.find_one({"site_id": site_id})
             if site:
@@ -319,6 +324,8 @@ class RAGEngine:
                     if u.get("url")
                 ]
                 site_behavior = (site.get("config") or {}).get("behavior") or {}
+                if site_behavior.get("product_cards", True):
+                    catalog_addendum = await self._catalog_addendum(mongodb, site.get("url"))
 
         try:
             rewritten_query = message
@@ -337,7 +344,7 @@ class RAGEngine:
             prompt = self._build_prompt(message, context, history)
             system_prompt = self._get_system_prompt(
                 site_name, custom_prompt=site_behavior.get("system_prompt")
-            )
+            ) + catalog_addendum
 
             full_response = ""
             async for chunk in self.ollama.generate_stream(
@@ -495,6 +502,21 @@ Rewritten search query (just the query, no explanation):"""
     # value equal to it means the site never customised its prompt.
     _PLACEHOLDER_PROMPT = "You are a helpful assistant. Answer questions based on the provided context."
 
+    async def _catalog_addendum(self, mongodb, site_url: Optional[str]) -> str:
+        """Exact product names for shops so answers can be matched to product cards."""
+        try:
+            from app.services.products import site_domain, catalog_prompt
+            domain = site_domain(site_url or "")
+            if not domain:
+                return ""
+            products = await mongodb.db.products.find(
+                {"domain": domain}, {"_id": 0, "name": 1, "price": 1, "currency": 1}
+            ).sort("name", 1).to_list(60)
+            return catalog_prompt(products)
+        except Exception as e:
+            logger.debug(f"catalog addendum skipped: {e}")
+            return ""
+
     def _get_system_prompt(self, site_name: str = None, custom_prompt: str = None) -> str:
         """System prompt: site-configured prompt wins, else the built-in default."""
         if custom_prompt and custom_prompt.strip() and custom_prompt.strip() != self._PLACEHOLDER_PROMPT:
@@ -546,10 +568,11 @@ Answer the user's question naturally and conversationally. Be brief by default; 
         custom_prompt: str = None,
         temperature: float = None,
         max_tokens: int = None,
+        prompt_addendum: str = "",
     ) -> str:
         """Generate the response using the LLM."""
         prompt = self._build_prompt(question, context, history)
-        system_prompt = self._get_system_prompt(site_name, custom_prompt=custom_prompt)
+        system_prompt = self._get_system_prompt(site_name, custom_prompt=custom_prompt) + (prompt_addendum or "")
 
         # Add user-specific context if available
         if user_id:

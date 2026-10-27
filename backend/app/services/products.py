@@ -215,41 +215,79 @@ def _norm(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", s).strip()
 
 
+GENERIC_WORDS = {"t", "shirt", "tshirt", "t shirt", "tee", "top", "hat", "cap", "unisex", "men", "mens", "women",
+                 "womens", "homem", "mulher", "senhora", "the", "a", "o", "de", "com", "and", "e", "preto", "preta",
+                 "branco", "branca", "black", "white", "size", "pack", "new", "novo", "nova", "edition", "classic"}
+
+
+def catalog_prompt(products: List[Dict], limit: int = 40) -> str:
+    """System-prompt addendum listing exact product names so the model uses them verbatim."""
+    if not products:
+        return ""
+    lines = []
+    for p in products[:limit]:
+        price = f" — {p['price']} {p.get('currency') or ''}".rstrip() if p.get("price") else ""
+        lines.append(f"- {p['name']}{price}")
+    return ("\n\nShop catalog (when you mention or recommend a product, use its EXACT name as written here "
+            "so it can be shown as a product card):\n" + "\n".join(lines))
+
+
 def match_products(answer: str, products: List[Dict], limit: int = 4) -> List[Dict]:
     """Products whose name appears (normalised) in the answer, best/longest first."""
     text = _norm(answer)
     if not text or not products:
         return []
     hits = []
+    padded = f" {text} "
     for p in products:
         name = _norm(p.get("name", ""))
         if len(name) < 3:
             continue
-        if name in text:
-            hits.append((len(name), p))
+        if f" {name} " in padded:
+            hits.append((len(name), True, p))
             continue
-        # Partial: product names often carry suffixes ("- Black", "| Shop");
-        # accept when a distinctive prefix (>= 3 words, >= 12 chars) matches.
-        words = name.split()
-        if len(words) >= 3:
-            prefix = " ".join(words[:4])
-            if len(prefix) >= 12 and prefix in text:
-                hits.append((len(prefix), p))
-    hits.sort(key=lambda h: h[0], reverse=True)
-    out, seen, taken_names = [], set(), []
-    for _, p in hits:
+        # Partial: the model often drops generic words ("t-shirt", "unisex") or
+        # suffixes ("- Black"). Accept the longest distinctive contiguous n-gram
+        # (>= 2 words, >= 10 chars, not only generic words) found in the answer.
+        words = [w for w in name.split() if w]
+        best = 0
+        for size in range(len(words), 1, -1):
+            for i in range(0, len(words) - size + 1):
+                gram = words[i:i + size]
+                if all(g in GENERIC_WORDS for g in gram):
+                    continue
+                phrase = " ".join(gram)
+                if len(phrase) >= 10 and f" {phrase} " in padded:
+                    best = len(phrase)
+                    break
+            if best:
+                break
+        if best:
+            hits.append((best, False, p))
+    # Longest match first; exact beats partial; for equal partial matches the
+    # product whose name is closest to the phrase wins ("Oversized Faded" ->
+    # "Oversized faded t-shirt", not "Brand Oversized faded t-shirt").
+    hits.sort(key=lambda h: (-h[0], not h[1], len(_norm(h[2].get("name", "")))))
+    out, seen, taken_exact, taken_partial_scores = [], set(), [], {}
+    for score, exact, p in hits:
         if p["url"] in seen:
             continue
         name = _norm(p.get("name", ""))
-        # "Oversized tee" shouldn't fire just because "Brand Oversized tee" did:
-        # require an occurrence not already covered by a longer matched name.
-        if any(name in longer for longer in taken_names):
+        # "Oversized tee" shouldn't fire just because "Brand Oversized tee" was
+        # mentioned in full: require an occurrence not covered by that exact match.
+        if any(name in longer for longer in taken_exact):
             remaining = text
-            for longer in taken_names:
+            for longer in taken_exact:
                 remaining = remaining.replace(longer, " ")
             if name not in remaining:
                 continue
-        taken_names.append(name)
+        # One partial phrase shouldn't fan out to every variant sharing it
+        if not exact and score in taken_partial_scores:
+            continue
+        if exact:
+            taken_exact.append(name)
+        else:
+            taken_partial_scores[score] = name
         seen.add(p["url"])
         out.append({k: p.get(k) for k in ("name", "url", "image", "price", "currency")})
         if len(out) >= limit:
