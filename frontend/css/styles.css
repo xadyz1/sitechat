@@ -11997,3 +11997,8 @@ body.is-master .is-master-only { display: flex !important; }
 .video-add-status { margin: 6px 0 0; font-size: 12px; color: var(--gray-500); }
 .video-add-status.ok { color: #15803d; }
 .video-add-status.error { color: #b91c1c; }
+
+/* Backup & restore card */
+.backup-actions { display: flex; gap: 28px; flex-wrap: wrap; }
+.backup-col { flex: 1 1 260px; min-width: 0; }
+.backup-col input[type=file] { display: block; font-size: 13px; max-width: 100%; }

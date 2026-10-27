@@ -1269,6 +1269,27 @@
                         <button type="button" class="btn btn-primary" id="landing-config-save">Save landing config</button>
                         <span class="settings-card-hint" id="landing-config-status"></span>
                     </div>
+
+                    <div class="settings-card" style="margin-top:20px">
+                        <h2 class="settings-card-title">Backup &amp; Restore</h2>
+                        <p class="settings-card-hint">Export every site (appearance, behaviour, Help Center, Q&amp;A, documents, product catalog), platform settings and user accounts to a JSON file — then import it on another installation. Vector indexes are rebuilt by re-crawling on import.</p>
+                        <div class="backup-actions">
+                            <div class="backup-col">
+                                <label class="form-checkbox" style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
+                                    <input type="checkbox" id="backup-include-users" checked> Include user accounts (password hashes)
+                                </label>
+                                <button type="button" class="btn btn-primary" id="backup-export-btn">Export backup</button>
+                            </div>
+                            <div class="backup-col">
+                                <label class="form-checkbox" style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
+                                    <input type="checkbox" id="backup-recrawl" checked> Re-crawl sites after import
+                                </label>
+                                <input type="file" id="backup-file" accept="application/json,.json" style="margin-bottom:10px">
+                                <button type="button" class="btn btn-secondary" id="backup-import-btn">Import backup</button>
+                            </div>
+                        </div>
+                        <p class="settings-card-hint" id="backup-status"></p>
+                    </div>
                 </div>
             </div>
 

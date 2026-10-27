@@ -11436,6 +11436,8 @@ async function loadLandingConfig() {
         if (!landingConfigBound) {
             landingConfigBound = true;
             document.getElementById('landing-config-save')?.addEventListener('click', saveLandingConfig);
+            document.getElementById('backup-export-btn')?.addEventListener('click', exportBackup);
+            document.getElementById('backup-import-btn')?.addEventListener('click', importBackup);
         }
     } catch (e) { /* non-fatal */ }
 }
@@ -11607,4 +11609,43 @@ function bindPlatformDeletePanel() {
             alert(e.message || 'Failed to delete user.');
         }
     }
+}
+
+
+// ---- Backup & Restore (master) ----
+async function exportBackup() {
+    const st = document.getElementById('backup-status');
+    const inc = document.getElementById('backup-include-users')?.checked !== false;
+    st.textContent = 'Preparing backup…';
+    try {
+        const res = await fetch(`${API_BASE}/platform/backup?include_users=${inc}`, { headers: getAuthHeaders() });
+        if (!res.ok) throw new Error((await res.json()).detail || 'Export failed');
+        const blob = await res.blob();
+        const name = (res.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/)?.[1] || 'swiftchat-backup.json';
+        const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: name });
+        document.body.appendChild(a); a.click(); a.remove();
+        st.textContent = `Downloaded ${name}`;
+    } catch (e) { st.textContent = e.message; }
+}
+
+async function importBackup() {
+    const st = document.getElementById('backup-status');
+    const file = document.getElementById('backup-file')?.files?.[0];
+    if (!file) { st.textContent = 'Choose a backup JSON file first.'; return; }
+    let bundle;
+    try { bundle = JSON.parse(await file.text()); } catch { st.textContent = 'That file is not valid JSON.'; return; }
+    const n = (bundle.sites || []).length;
+    if (!confirm(`Import ${n} site(s)? Existing sites with the same ID will be overwritten.`)) return;
+    st.textContent = 'Importing…';
+    try {
+        const res = await fetch(`${API_BASE}/platform/restore`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+            body: JSON.stringify({ bundle, recrawl: document.getElementById('backup-recrawl')?.checked !== false })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Import failed');
+        st.textContent = `Imported ${data.sites} site(s), ${data.related} related records, ${data.users_created} new user(s); ${data.recrawl_queued} re-crawl(s) queued.`;
+        if (typeof loadSites === 'function') loadSites();
+    } catch (e) { st.textContent = e.message; }
 }

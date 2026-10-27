@@ -562,12 +562,43 @@
                 </button>
             </form>
 
+            <div id="fresh-restore" hidden style="margin-top:22px;padding-top:18px;border-top:1px solid #e2e8f0;text-align:center">
+                <p style="font-size:13px;color:#64748b;margin:0 0 10px">Fresh installation — no accounts yet.</p>
+                <input type="file" id="fresh-restore-file" accept="application/json,.json" style="font-size:13px;margin-bottom:10px">
+                <button type="button" class="btn btn-secondary" id="fresh-restore-btn" style="width:100%">Restore from backup</button>
+                <p id="fresh-restore-status" style="font-size:12px;color:#64748b;margin:8px 0 0"></p>
+            </div>
+
         </div>
     </div>
 
     <script>
 
         const API_BASE = window.location.origin + '/api';
+
+        // Fresh install: offer restore-from-backup (allowed without auth when zero users exist)
+        fetch(API_BASE + '/platform/restore/status').then(r => r.ok ? r.json() : {}).then(d => {
+            if (!d.fresh) return;
+            const box = document.getElementById('fresh-restore');
+            box.hidden = false;
+            document.getElementById('fresh-restore-btn').addEventListener('click', async () => {
+                const st = document.getElementById('fresh-restore-status');
+                const f = document.getElementById('fresh-restore-file').files[0];
+                if (!f) { st.textContent = 'Choose the backup JSON first.'; return; }
+                st.textContent = 'Restoring…';
+                try {
+                    const bundle = JSON.parse(await f.text());
+                    const res = await fetch(API_BASE + '/platform/restore', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ bundle, recrawl: true })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.detail || 'Restore failed');
+                    st.textContent = `Restored ${data.sites} site(s) and ${data.users_created} user(s). Sign in with your backed-up credentials.`;
+                    box.querySelector('button').disabled = true;
+                } catch (e) { st.textContent = e.message; }
+            });
+        }).catch(() => {});
 
         // Check if already logged in
         const token = localStorage.getItem('token');
