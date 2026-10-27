@@ -30,7 +30,7 @@ class SetupRequest(BaseModel):
     """Request to set up a new chatbot for a website."""
     url: HttpUrl
     name: Optional[str] = None
-    max_pages: Optional[int] = 50
+    max_pages: Optional[int] = 150
 
 
 class SetupResponse(BaseModel):
@@ -90,7 +90,7 @@ def get_embed_url(request: Optional[Request] = None) -> str:
     return "http://localhost:8000"
 
 
-async def crawl_and_index_site(url: str, site_id: str, max_pages: int = 50):
+async def crawl_and_index_site(url: str, site_id: str, max_pages: int = 150):
     """Background task to crawl and index a website."""
     mongodb = await get_mongodb()
     job_id = None
@@ -202,7 +202,7 @@ async def setup_chatbot(
             }
         })
     
-    background_tasks.add_task(crawl_and_index_site, url, site_id, request.max_pages or 50)
+    background_tasks.add_task(crawl_and_index_site, url, site_id, request.max_pages or 150)
     
     api_url = get_embed_url(http_request)
     sri_hash = get_widget_sri_hash()

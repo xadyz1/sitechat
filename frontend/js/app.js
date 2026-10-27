@@ -3272,7 +3272,7 @@ async function recrawlSite() {
         await fetch(`${API_BASE}/crawl`, {
             method: 'POST',
             headers: getAuthHeaders(),
-            body: JSON.stringify({ url: currentDetailSite.url, max_pages: 50 })
+            body: JSON.stringify({ url: currentDetailSite.url, max_pages: 150 })
         });
         
         closeDetailsModal();

@@ -195,7 +195,7 @@ async def trigger_crawl_now(
     site_url = site.get("url")
     schedule_config = await db.get_crawl_schedule(site_id) or {}
     
-    max_pages = schedule_config.get("max_pages", 50)
+    max_pages = schedule_config.get("max_pages", 150)
     include_patterns = schedule_config.get("include_patterns", [])
     exclude_patterns = schedule_config.get("exclude_patterns", [])
     

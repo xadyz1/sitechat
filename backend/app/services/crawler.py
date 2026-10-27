@@ -12,6 +12,18 @@ from loguru import logger
 from app.config import settings
 from app.database import get_mongodb
 
+# Overlay containers to strip from text (age verification, cookie consent)
+GATE_RE = re.compile(r"age[-_]?gate|agegate|age[-_]?verif|age[-_]?check|adult[-_]?(gate|warning|modal)|"
+                     r"cookie[-_]?(banner|consent|notice|bar)|gdpr", re.I)
+# Buttons that confirm an age gate — clicked automatically during JS rendering
+GATE_BUTTON_TEXT_RE = re.compile(
+    r"^\s*(sim|yes|oui|sí|si|ja|ok|"
+    r"(sim|yes),?\s*(tenho|sou|i am|i'm|soy|tengo).{0,12}|"
+    r"(tenho|sou|i am|i'm|soy|tengo|ich bin)\s*(mais de|over|más de|über)?\s*18.{0,10}|"
+    r"(enter|entrar|entrer|aceitar|accept|acepto|confirm(ar|o)?|continuar|continue|i agree|concordo)"
+    r"(\s*(site|website|a|al|le|now|agora))?)\s*[+!.]*\s*$", re.I)
+GATE_BUTTON_18_RE = re.compile(r"18\s*\+?|\+\s*18|maior|adult|over 18|years", re.I)
+
 
 class CrawlerService:
     """Service for crawling websites and extracting content."""
@@ -25,6 +37,7 @@ class CrawlerService:
         self.rendered_pages: int = 0  # pages recovered via headless browser
         self._pw = None
         self._browser = None
+        self._context = None
     
     async def crawl(
         self,
@@ -52,6 +65,7 @@ class CrawlerService:
         self.errors = []
         self.job_id = job_id
         self.thin_pages = 0
+        self._seen_lang = None
         
         max_pages = max_pages or settings.MAX_PAGES
         include_patterns = include_patterns or []
@@ -166,6 +180,12 @@ class CrawlerService:
         # Remove unwanted elements
         for element in soup.find_all(["script", "style", "nav", "footer", "header", "aside"]):
             element.decompose()
+        # Age-gate / cookie-consent overlays pollute every page with the same text
+        for element in soup.find_all(attrs={"id": GATE_RE}) + soup.find_all(attrs={"class": GATE_RE}):
+            try:
+                element.decompose()
+            except Exception:
+                pass
 
         # Extract title
         title = ""
@@ -238,6 +258,12 @@ class CrawlerService:
 
     async def _stop_browser(self) -> None:
         try:
+            if self._context:
+                await self._context.close()
+        except Exception:
+            pass
+        self._context = None
+        try:
             if self._browser:
                 await self._browser.close()
         except Exception:
@@ -250,16 +276,57 @@ class CrawlerService:
         self._browser = None
         self._pw = None
 
+    async def _dismiss_gates(self, page) -> bool:
+        """Click through age-verification / consent overlays so gated content renders.
+        Returns True when a gate button was clicked."""
+        clicked = False
+        try:
+            candidates = await page.query_selector_all(
+                "button, a[role=button], input[type=button], input[type=submit], [onclick]")
+            for el in candidates[:60]:
+                try:
+                    text = (await el.inner_text()) if await el.evaluate("e => e.tagName !== 'INPUT'") \
+                        else (await el.get_attribute("value") or "")
+                except Exception:
+                    continue
+                text = (text or "").strip()
+                if not text or len(text) > 40:
+                    continue
+                container_hit = await el.evaluate(
+                    "(e, re) => !!e.closest('[id*=\"age\" i],[class*=\"age\" i],[id*=\"adult\" i],"
+                    "[class*=\"adult\" i],[id*=\"gate\" i],[class*=\"gate\" i],[id*=\"verif\" i],"
+                    "[class*=\"verif\" i],[class*=\"modal\" i],[role=\"dialog\"]')", None)
+                if GATE_BUTTON_18_RE.search(text) or (container_hit and GATE_BUTTON_TEXT_RE.match(text)):
+                    if not await el.is_visible():
+                        continue
+                    await el.click(timeout=2000)
+                    clicked = True
+                    logger.info(f"Dismissed gate overlay via button: {text!r}")
+                    await page.wait_for_timeout(600)
+                    break
+        except Exception as e:
+            logger.debug(f"Gate dismissal skipped: {e}")
+        return clicked
+
     async def _fetch_page_rendered(self, url: str) -> Optional[Dict]:
         """Render a page in headless Chromium and extract content from the live DOM."""
         page = None
         try:
-            page = await self._browser.new_page(user_agent="SwiftChat-Crawler/1.0")
+            if self._context is None:
+                # One context per crawl: age-gate acceptance stored in cookies /
+                # localStorage / sessionStorage carries over to every later page.
+                self._context = await self._browser.new_context(user_agent="SwiftChat-Crawler/1.0")
+            page = await self._context.new_page()
             await page.goto(url, wait_until="domcontentloaded", timeout=20000)
             try:
                 await page.wait_for_load_state("networkidle", timeout=8000)
             except Exception:
                 pass  # SPAs may never reach networkidle — extract what we have
+            if await self._dismiss_gates(page):
+                try:
+                    await page.wait_for_load_state("networkidle", timeout=5000)
+                except Exception:
+                    pass
             html = await page.content()
             data = self._extract_page_data(url, html, count_thin=False)
             if data:
@@ -276,10 +343,38 @@ class CrawlerService:
                 except Exception:
                     pass
     
+    # Query params that only re-order / filter / track — never new content
+    NOISE_PARAMS = {"utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "fbclid", "gclid",
+                    "sort", "order", "orderby", "dir", "view", "focus", "ref", "src", "page_size", "per_page"}
+    LANG_PARAMS = {"lang", "language", "locale", "hl", "lng"}
+
+    def _prune_query(self, query: str, start_lang: Optional[str]) -> Optional[str]:
+        """Drop tracking/sort params; keep only the crawl's own language variant.
+        Returns None when the URL is an alternate-language duplicate."""
+        from urllib.parse import parse_qsl, urlencode
+        kept = []
+        for k, v in parse_qsl(query, keep_blank_values=True):
+            kl = k.lower()
+            if kl in self.NOISE_PARAMS:
+                continue
+            if kl in self.LANG_PARAMS:
+                if start_lang is None:
+                    self._seen_lang = getattr(self, "_seen_lang", None) or v
+                    start_lang = self._seen_lang
+                if v[:2].lower() != start_lang[:2].lower():
+                    return None
+            kept.append((k, v))
+        return urlencode(kept)
+
     def _extract_links(self, html: str, base_domain: str, current_url: str) -> List[str]:
         """Extract links from HTML."""
+        from urllib.parse import parse_qs
         soup = BeautifulSoup(html, "html.parser")
         links = []
+        start_q = parse_qs(urlparse(current_url).query)
+        start_lang = next((start_q[k][0] for k in start_q if k.lower() in self.LANG_PARAMS), None)
+        if start_lang is None and soup.html is not None and soup.html.get("lang"):
+            start_lang = soup.html.get("lang")  # site's declared language wins over link order
         
         for anchor in soup.find_all("a", href=True):
             href = anchor["href"]
@@ -299,7 +394,11 @@ class CrawlerService:
             # Remove fragments
             clean_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
             if parsed.query:
-                clean_url += f"?{parsed.query}"
+                query = self._prune_query(parsed.query, start_lang)
+                if query is None:
+                    continue  # alternate-language duplicate of a page we already have
+                if query:
+                    clean_url += f"?{query}"
             
             # Skip file downloads
             if any(clean_url.lower().endswith(ext) for ext in [".pdf", ".jpg", ".png", ".gif", ".zip", ".mp4"]):

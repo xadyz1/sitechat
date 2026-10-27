@@ -255,7 +255,7 @@ class Settings(BaseSettings):
     # ===========================================
     # Crawler settings
     # ===========================================
-    MAX_PAGES: int = 100
+    MAX_PAGES: int = 300
     CRAWL_DELAY: float = 1.0
     # Render pages through headless Chromium when static fetch yields a
     # JS shell (SPA sites). Requires playwright + chromium in the image;
