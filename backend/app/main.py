@@ -51,6 +51,7 @@ from app.routes.preview import router as preview_router
 from app.routes.demo_hc import router as demo_hc_router
 from app.routes.backup import router as backup_router
 from app.routes.content import router as content_router
+from app.routes.billing import router as billing_router
 from app.services.auth import AuthService
 from app.services.scheduler import get_scheduler
 
@@ -252,6 +253,7 @@ app.include_router(preview_router)
 app.include_router(demo_hc_router)
 app.include_router(backup_router)
 app.include_router(content_router)
+app.include_router(billing_router)
 
 # Serve static files (frontend)
 # Get the absolute path to the frontend directory

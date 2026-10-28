@@ -212,6 +212,13 @@ class Settings(BaseSettings):
     STRIPE_CURRENCY: str = "eur"
 
     # ===========================================
+    # SwiftFinance — central finance/revenue reporting hub.
+    # Create a token in SwiftFinance > Integrações and point each app here.
+    # ===========================================
+    SWIFTFINANCE_INGEST_URL: Optional[str] = None
+    SWIFTFINANCE_API_TOKEN: Optional[str] = None
+
+    # ===========================================
     # Email — SMTP (transactional mail, alerts, invites)
     # ===========================================
     SMTP_HOST: Optional[str] = None

@@ -13,6 +13,7 @@ from app.config import settings
 from app.database import get_mongodb
 from app.routes.auth import require_admin, require_auth
 from app.models.schemas import PlatformWhiteLabelConfig, PlatformWhiteLabelUpdate
+from app.services.finance_sync import push_entities, sync_user_to_finance, user_entities
 
 router = APIRouter(prefix="/api/platform", tags=["platform"])
 
@@ -179,10 +180,30 @@ async def set_user_plan(user_id: str, data: PlanUpdate, user: dict = Depends(req
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
     await db.update_user(user_id, {"plan": data.plan, "plan_updated_at": datetime.now(timezone.utc)})
+    # Best-effort: mirror client + subscription into SwiftFinance reports
+    updated = await db.get_user_by_id(user_id) or {**target, "plan": data.plan}
+    await sync_user_to_finance(updated)
     return {"ok": True, "user_id": user_id, "plan": data.plan}
 
 
 # --------------------------- Finance ---------------------------
+
+@router.post("/finance/sync")
+async def finance_sync_all(user: dict = Depends(require_master)):
+    """Backfill: push every user as client + subscription entities to SwiftFinance."""
+    db = await get_mongodb()
+    users = await db.get_all_users()
+    entities = []
+    for u in users:
+        entities.extend(user_entities(u))
+    pushed = await push_entities(entities)
+    return {
+        "configured": bool(settings.SWIFTFINANCE_INGEST_URL and settings.SWIFTFINANCE_API_TOKEN),
+        "pushed": pushed,
+        "entities": len(entities),
+        "users": len(users),
+    }
+
 
 async def _stripe_summary() -> dict:
     """Live MRR/subscription summary from Stripe when a secret key is configured."""
