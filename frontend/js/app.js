@@ -1076,7 +1076,7 @@ function renderBrandPreview(preview, data) {
         <div class="bp-head">
             ${data.favicon ? `<img class="bp-icon" src="${escapeHtml(data.favicon)}" alt="" onerror="this.style.display='none'">` : ''}
             <strong>${escapeHtml(data.name || '')}</strong>
-            <span class="bp-lang">${escapeHtml(data.language || 'en')}</span>
+            <span class="bp-lang">${escapeHtml(data.language || 'pt')}</span>
         </div>
         ${swatches ? `<div class="bp-colors">${swatches}</div>` : ''}
         ${questions ? `<ul class="bp-questions">${questions}</ul>` : ''}
@@ -1109,8 +1109,8 @@ async function applyBrandToSite(siteId, brand) {
                 ...(brand.favicon ? { bot_avatar_url: brand.favicon } : {})
             },
             help_center: {
-                default_locale: brand.language || 'en',
-                locales: [brand.language || 'en']
+                default_locale: brand.language || 'pt',
+                locales: [brand.language || 'pt']
             }
         });
         if (brand.suggested_questions?.length) {
@@ -6286,7 +6286,7 @@ function getHelpCenterTabContent() {
 
     const socialNetworks = ['linkedin', 'twitter', 'facebook', 'github', 'youtube', 'website'];
     const socialRows = socialLinks.map((l, i) => helpCenterSocialRowHtml(l, i, socialNetworks)).join('');
-    const locales = Array.isArray(hc.locales) && hc.locales.length ? hc.locales : [hc.default_locale || 'en'];
+    const locales = Array.isArray(hc.locales) && hc.locales.length ? hc.locales : [hc.default_locale || 'pt'];
     const localeRows = locales.map((l, i) => helpCenterLocaleRowHtml(l, i === 0)).join('');
 
     return `
@@ -6452,10 +6452,10 @@ function getHelpCenterTabContent() {
                     </div>
                 </div>
 
-                <div class="help-center-actions">
-                    <button type="button" class="btn btn-primary btn-sm" id="save-help-center">Save Changes</button>
-                    <button type="button" class="btn btn-secondary btn-sm" id="sync-help-center">Sync Now</button>
-                </div>
+            </div>
+            <div class="help-center-actions">
+                <button type="button" class="btn btn-primary btn-sm" id="save-help-center">Save Changes</button>
+                <button type="button" class="btn btn-secondary btn-sm" id="sync-help-center" ${enabled ? '' : 'disabled'}>Sync Now</button>
             </div>
         </div>
     `;
@@ -6502,6 +6502,8 @@ function initHelpCenterHandlers() {
             content.style.opacity = e.target.checked ? '1' : '0.5';
             content.style.pointerEvents = e.target.checked ? 'auto' : 'none';
         }
+        const syncBtn = document.getElementById('sync-help-center');
+        if (syncBtn) syncBtn.disabled = !e.target.checked;
     });
     document.getElementById('save-help-center')?.addEventListener('click', saveHelpCenterConfig);
     document.getElementById('sync-help-center')?.addEventListener('click', syncHelpCenter);
@@ -6580,20 +6582,20 @@ function initHelpCenterHandlers() {
         const catSlug = row.dataset.catSlug, catLocale = row.dataset.catLocale;
         const artSlug = row.dataset.artSlug, artLocale = row.dataset.artLocale;
         if (e.target.closest('.hc-edit-cat')) {
-            const cat = (hcContent.categories || []).find(c => c.slug === catSlug && (c.locale || 'en') === catLocale);
+            const cat = (hcContent.categories || []).find(c => c.slug === catSlug && (c.locale || 'pt') === catLocale);
             if (cat) hcOpenCategoryModal(cat);
         } else if (e.target.closest('.hc-del-cat')) {
-            const cat = (hcContent.categories || []).find(c => c.slug === catSlug && (c.locale || 'en') === catLocale);
+            const cat = (hcContent.categories || []).find(c => c.slug === catSlug && (c.locale || 'pt') === catLocale);
             if (cat && confirm(`Delete category "${cat.name}"? Its articles become uncategorised.`)) {
                 fetch(`${API_BASE}/sites/${currentDetailSite.site_id}/help/categories/${encodeURIComponent(catSlug)}?locale=${encodeURIComponent(catLocale)}`, {
                     method: 'DELETE', headers: getAuthHeaders()
                 }).then(() => { loadHelpCenterContent(); loadHelpCenterStatus(); });
             }
         } else if (e.target.closest('.hc-edit-art')) {
-            const art = (hcContent.articles || []).find(a => a.slug === artSlug && (a.locale || 'en') === artLocale);
+            const art = (hcContent.articles || []).find(a => a.slug === artSlug && (a.locale || 'pt') === artLocale);
             if (art) hcOpenArticleModal(art);
         } else if (e.target.closest('.hc-del-art')) {
-            const art = (hcContent.articles || []).find(a => a.slug === artSlug && (a.locale || 'en') === artLocale);
+            const art = (hcContent.articles || []).find(a => a.slug === artSlug && (a.locale || 'pt') === artLocale);
             if (art && confirm(`Delete article "${art.title}"?`)) {
                 fetch(`${API_BASE}/sites/${currentDetailSite.site_id}/help/articles/${encodeURIComponent(artSlug)}?locale=${encodeURIComponent(artLocale)}`, {
                     method: 'DELETE', headers: getAuthHeaders()
@@ -6665,7 +6667,7 @@ async function saveHelpCenterConfig() {
     };
     const locales = [...document.querySelectorAll('#hc-locales .hc-locale-select')]
         .map(s => s.value).filter((v, i, arr) => arr.indexOf(v) === i);
-    helpCenter.locales = locales.length ? locales : ['en'];
+    helpCenter.locales = locales.length ? locales : ['pt'];
     helpCenter.default_locale = helpCenter.locales[0];
     try {
         const response = await fetch(`${API_BASE}/sites/${currentDetailSite.site_id}/config`, {
@@ -6728,7 +6730,7 @@ let hcContent = { categories: [], articles: [] };
 function hcLocalesList() {
     const sel = [...document.querySelectorAll('#hc-locales .hc-locale-select')].map(s => s.value);
     if (sel.length) return sel;
-    return (currentSiteConfig?.help_center?.locales) || ['en'];
+    return (currentSiteConfig?.help_center?.locales) || ['pt'];
 }
 
 async function loadHelpCenterContent() {
@@ -6763,9 +6765,9 @@ function renderHcContentList() {
         <div class="hc-manage-group">
             <div class="hc-manage-head">Categories <span class="hc-manage-count">${cats.length}</span></div>
             ${cats.length ? cats.map(c => `
-                <div class="hc-manage-row" data-cat-slug="${escapeHtml(c.slug)}" data-cat-locale="${escapeHtml(c.locale || 'en')}">
+                <div class="hc-manage-row" data-cat-slug="${escapeHtml(c.slug)}" data-cat-locale="${escapeHtml(c.locale || 'pt')}">
                     <span class="hc-manage-icon">${hcIconHtml(c)}</span>
-                    <span class="hc-manage-title">${escapeHtml(c.name)} <em class="hc-manage-meta">${escapeHtml(c.locale || 'en')} · ${c.article_count || 0} articles</em></span>
+                    <span class="hc-manage-title">${escapeHtml(c.name)} <em class="hc-manage-meta">${escapeHtml(c.locale || 'pt')} · ${c.article_count || 0} articles</em></span>
                     <button type="button" class="btn-icon hc-edit-cat" title="Edit category">✎</button>
                     <button type="button" class="btn-icon hc-del-cat" title="Delete category">×</button>
                 </div>`).join('') : '<div class="hc-manage-empty">No categories yet — sync a portal or create one.</div>'}
@@ -6773,8 +6775,8 @@ function renderHcContentList() {
         <div class="hc-manage-group">
             <div class="hc-manage-head">Articles <span class="hc-manage-count">${arts.length}</span></div>
             ${arts.length ? arts.map(a => `
-                <div class="hc-manage-row" data-art-slug="${escapeHtml(a.slug)}" data-art-locale="${escapeHtml(a.locale || 'en')}">
-                    <span class="hc-manage-title">${escapeHtml(a.title)} <em class="hc-manage-meta">${escapeHtml(a.locale || 'en')} · ${escapeHtml(catName(a.category_slug, a.locale))}</em></span>
+                <div class="hc-manage-row" data-art-slug="${escapeHtml(a.slug)}" data-art-locale="${escapeHtml(a.locale || 'pt')}">
+                    <span class="hc-manage-title">${escapeHtml(a.title)} <em class="hc-manage-meta">${escapeHtml(a.locale || 'pt')} · ${escapeHtml(catName(a.category_slug, a.locale))}</em></span>
                     <button type="button" class="btn-icon hc-edit-art" title="Edit article">✎</button>
                     <button type="button" class="btn-icon hc-del-art" title="Delete article">×</button>
                 </div>`).join('') : '<div class="hc-manage-empty">No articles yet — sync a portal or create one.</div>'}
@@ -6869,7 +6871,7 @@ function hcOpenCategoryModal(cat = null) {
         };
         if (!body.name) return;
         const base = `${API_BASE}/sites/${currentDetailSite.site_id}/help/categories`;
-        const url = editing ? `${base}/${encodeURIComponent(cat.slug)}?locale=${encodeURIComponent(cat.locale || 'en')}` : base;
+        const url = editing ? `${base}/${encodeURIComponent(cat.slug)}?locale=${encodeURIComponent(cat.locale || 'pt')}` : base;
         const res = await fetch(url, {
             method: editing ? 'PUT' : 'POST',
             headers: getAuthHeaders(),
@@ -6933,7 +6935,7 @@ function hcOpenArticleModal(art = null) {
         };
         if (!body.title) return;
         const base = `${API_BASE}/sites/${currentDetailSite.site_id}/help/articles`;
-        const url = editing ? `${base}/${encodeURIComponent(art.slug)}?locale=${encodeURIComponent(art.locale || 'en')}` : base;
+        const url = editing ? `${base}/${encodeURIComponent(art.slug)}?locale=${encodeURIComponent(art.locale || 'pt')}` : base;
         const res = await fetch(url, {
             method: editing ? 'PUT' : 'POST',
             headers: getAuthHeaders(),
@@ -8859,14 +8861,15 @@ async function loadSecurityConfig() {
     initSecurityTabHandlers();
     
     try {
-        const response = await fetch(`${API_BASE}/sites/${currentDetailSite.site_id}`, {
+        const response = await fetch(`${API_BASE}/sites/${currentDetailSite.site_id}/config`, {
             headers: getAuthHeaders()
         });
-        
+
         if (!response.ok) return;
-        
-        const site = await response.json();
-        const security = site.config?.security || {};
+
+        const config = await response.json();
+        currentSiteConfig = config;
+        const security = config.security || {};
         
         const enforceEl = document.getElementById('security-enforce-domain');
         const referrerEl = document.getElementById('security-require-referrer');
@@ -9024,9 +9027,10 @@ async function saveSecurityConfig() {
             headers: getAuthHeaders(),
             body: JSON.stringify({ security: securityConfig })
         });
-        
+
         if (!response.ok) throw new Error('Failed to save config');
-        
+
+        currentSiteConfig = await response.json();
         btn.textContent = 'Saved!';
         setTimeout(() => {
             btn.textContent = originalText;

@@ -132,7 +132,7 @@ class HelpCenterService:
         now = datetime.utcnow()
         # The trailing portal path segment is usually the locale (…/hc/{slug}/en)
         last_seg = portal_url.rsplit("/", 1)[-1]
-        locale = last_seg if re.fullmatch(r"[a-z]{2}(-[a-zA-Z]{2})?", last_seg) else "en"
+        locale = last_seg if re.fullmatch(r"[a-z]{2}(-[a-zA-Z]{2})?", last_seg) else "pt"
 
         async with aiohttp.ClientSession() as session:
             home = await self._fetch(session, portal_url)

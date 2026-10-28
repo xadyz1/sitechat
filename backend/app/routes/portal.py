@@ -79,8 +79,8 @@ async def _portal_context(request: Request, identifier: str) -> tuple:
     site_url = site.get("url") or site.get("domain") or ""
 
     # Locale: explicit ?locale= > remembered cookie > configured default
-    locales = [l.lower() for l in (hc.get("locales") or ["en"])]
-    default_locale = (hc.get("default_locale") or "en").lower()
+    locales = [l.lower() for l in (hc.get("locales") or ["pt"])]
+    default_locale = (hc.get("default_locale") or "pt").lower()
     if default_locale not in locales:
         locales.insert(0, default_locale)
     cookie_locale = (request.cookies.get(f"hc_locale_{site_id}") or "").lower()

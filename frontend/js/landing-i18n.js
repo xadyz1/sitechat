@@ -294,7 +294,7 @@
     b.setAttribute('aria-label', 'Language / Idioma');
     b.innerHTML = '<span class="lt-flag lt-en">' + flagSvg(false) + '</span><span class="lt-flag lt-pt">' + flagSvg(true) + '</span>';
     b.addEventListener('click', function () {
-      setLang((localStorage.getItem('sc_lang') || 'en') === 'pt' ? 'en' : 'pt');
+      setLang((localStorage.getItem('sc_lang') || 'pt') === 'pt' ? 'en' : 'pt');
     });
     return b;
   }
@@ -314,7 +314,7 @@
     }
 
     var saved = localStorage.getItem('sc_lang');
-    if (saved === 'pt') setLang('pt');
+    if (saved !== 'en') setLang('pt');
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount);

@@ -119,7 +119,7 @@ async def sync_help_center(site_id: str, background_tasks: BackgroundTasks,
 class CategoryBody(BaseModel):
     name: str
     slug: Optional[str] = None
-    locale: Optional[str] = "en"
+    locale: Optional[str] = "pt"
     icon: Optional[str] = None
     icon_url: Optional[str] = None
     description: Optional[str] = None
@@ -129,7 +129,7 @@ class ArticleBody(BaseModel):
     title: str
     slug: Optional[str] = None
     category_slug: Optional[str] = None
-    locale: Optional[str] = "en"
+    locale: Optional[str] = "pt"
     content_html: Optional[str] = ""
     excerpt: Optional[str] = None
 
@@ -206,7 +206,7 @@ async def manage_content(site_id: str, user: dict = Depends(require_auth)):
 async def create_category(site_id: str, body: CategoryBody, user: dict = Depends(require_auth)):
     db = await get_mongodb()
     await _manage_site(db, site_id, user)
-    locale = (body.locale or "en").lower()
+    locale = (body.locale or "pt").lower()
     slug = await _unique_slug(db, site_id, _slugify(body.slug or body.name), locale)
     doc = {
         "site_id": site_id, "slug": slug, "name": body.name.strip(), "locale": locale,
@@ -268,7 +268,7 @@ async def delete_category(site_id: str, slug: str, locale: Optional[str] = None,
 async def create_article(site_id: str, body: ArticleBody, user: dict = Depends(require_auth)):
     db = await get_mongodb()
     await _manage_site(db, site_id, user)
-    locale = (body.locale or "en").lower()
+    locale = (body.locale or "pt").lower()
     slug = await _unique_slug(db, site_id, _slugify(body.slug or body.title), locale)
     content_html = HelpCenterService.sanitize_article_html(body.content_html or "")
     doc = {

@@ -389,8 +389,8 @@ class SiteHelpCenterConfig(BaseModel):
     layout: Literal["classic", "documentation"] = Field(default="documentation", description="Portal layout")
     social_links: List[HelpCenterSocialLink] = Field(default_factory=list, description="Footer social links")
     embed_widget: bool = Field(default=True, description="Embed the site chat widget on portal pages")
-    locales: List[str] = Field(default_factory=lambda: ["en"], description="Portal languages, e.g. ['en','pt']")
-    default_locale: str = Field(default="en", description="Default portal language")
+    locales: List[str] = Field(default_factory=lambda: ["pt"], description="Portal languages, e.g. ['en','pt']")
+    default_locale: str = Field(default="pt", description="Default portal language")
     custom_domain: Optional[str] = Field(
         default=None,
         description="Custom domain serving this help center (e.g. help.example.com) via DNS CNAME"

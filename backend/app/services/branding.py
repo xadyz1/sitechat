@@ -213,7 +213,7 @@ async def fetch_brand_info(url: str) -> Dict[str, object]:
     if not name and soup.title and soup.title.string:
         name = re.split(r"\s[|\-–—·]\s", soup.title.string.strip())[0]
 
-    lang = (soup.html.get("lang") or "en").split("-")[0].lower() if soup.html else "en"
+    lang = (soup.html.get("lang") or "pt").split("-")[0].lower() if soup.html else "pt"
     host = urlparse(final_url).netloc
 
     return {
