@@ -90,6 +90,15 @@ async def create_handoff(request: Request, body: HandoffRequest):
             "message": "Handoff already exists for this session"
         }
 
+    # Don't create live-agent sessions when the feature is off or nobody is
+    # assigned. Requests carrying a visitor_email are offline leads submitted
+    # through the widget's "leave your email" form — those still go through.
+    if not body.visitor_email:
+        hc = await mongodb.get_site_handoff_config(body.site_id) or {}
+        agents_ready = hc.get("enabled", True) and await mongodb.has_assigned_agents(body.site_id)
+        if not agents_ready:
+            raise HTTPException(status_code=503, detail="Live agents are not available for this site.")
+
     ai_summary = None
     if body.ai_conversation:
         messages = body.ai_conversation[-10:]
