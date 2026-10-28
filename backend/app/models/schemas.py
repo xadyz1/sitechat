@@ -326,13 +326,13 @@ class SiteSecurityConfig(BaseModel):
 class QuickPromptButton(BaseModel):
     """A button inside a card prompt."""
     label: str = Field(..., description="Button text", max_length=60)
-    action: Literal["send_message", "open_url", "talk_to_agent"] = Field(
+    action: Literal["send_message", "open_url", "open_url_modal", "talk_to_agent"] = Field(
         default="send_message",
-        description="Button action: send_message | open_url | talk_to_agent"
+        description="Button action: send_message | open_url | open_url_modal | talk_to_agent"
     )
     value: Optional[str] = Field(
         default=None,
-        description="Message to send (send_message), URL (open_url); optional for talk_to_agent"
+        description="Message to send (send_message), URL (open_url), URL or iframe embed code (open_url_modal); optional for talk_to_agent"
     )
 
 

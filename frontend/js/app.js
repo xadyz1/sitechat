@@ -2841,7 +2841,7 @@ async function saveVisibilityConfig() {
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
-    return div.innerHTML;
+    return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 function initAppearanceHandlers() {
@@ -3934,7 +3934,7 @@ function formatTimeAgo(date) {
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
-    return div.innerHTML;
+    return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 function setupAnalyticsPeriodButtons() {
@@ -6000,6 +6000,15 @@ async function loadQuickPrompts() {
     }
 }
 
+function cardBtnValuePlaceholder(action) {
+    switch (action) {
+        case 'open_url': return 'https://example.com';
+        case 'open_url_modal': return 'Iframe embed code or URL';
+        case 'talk_to_agent': return 'Optional handoff message';
+        default: return 'Message to send';
+    }
+}
+
 function renderQuickPromptsList() {
     const listEl = document.getElementById('quick-prompts-list');
     const emptyEl = document.getElementById('quick-prompts-empty');
@@ -6073,9 +6082,10 @@ function renderQuickPromptsList() {
                             <select class="form-select quick-card-btn-action">
                                 <option value="send_message" ${b.action === 'send_message' || !b.action ? 'selected' : ''}>Ask AI</option>
                                 <option value="open_url" ${b.action === 'open_url' ? 'selected' : ''}>Open URL</option>
+                                <option value="open_url_modal" ${b.action === 'open_url_modal' ? 'selected' : ''}>Open URL (modal)</option>
                                 <option value="talk_to_agent" ${b.action === 'talk_to_agent' ? 'selected' : ''}>Live agent</option>
                             </select>
-                            <input type="text" class="form-input quick-card-btn-value" value="${escapeHtml(b.value || '')}" placeholder="Message or URL">
+                            <input type="text" class="form-input quick-card-btn-value" value="${escapeHtml(b.value || '')}" placeholder="${cardBtnValuePlaceholder(b.action)}">
                             <button type="button" class="quick-card-btn-remove" title="Remove button">×</button>
                         </div>
                     `).join('')}
@@ -6139,6 +6149,8 @@ function renderQuickPromptsList() {
                 });
                 row.querySelector('.quick-card-btn-action')?.addEventListener('change', (e) => {
                     quickPromptsState.prompts[index].buttons[bi].action = e.target.value;
+                    const valueInput = row.querySelector('.quick-card-btn-value');
+                    if (valueInput) valueInput.placeholder = cardBtnValuePlaceholder(e.target.value);
                 });
                 row.querySelector('.quick-card-btn-value')?.addEventListener('change', (e) => {
                     quickPromptsState.prompts[index].buttons[bi].value = e.target.value;
