@@ -1817,6 +1817,8 @@ function getAppearanceTabContent() {
     const primaryColor = a.primary_color || '#7B3DFB';
     const chatTitle = a.chat_title || 'Chat with us';
     const welcomeMsg = a.welcome_message || 'Hi! How can I help you today?';
+    const welcomeIconVal = a.welcome_icon || 'default';
+    const welcomeIconIsUrl = /^(https?:|data:|\/)/i.test(welcomeIconVal);
 
     const colorField = (id, label, value, auto) => {
         const effective = value || auto || primaryColor;
@@ -1875,6 +1877,7 @@ function getAppearanceTabContent() {
                             <input type="checkbox" id="config-welcome-enabled" ${a.welcome_enabled !== false ? 'checked' : ''}>
                             <label for="config-welcome-enabled">Show Welcome Screen</label>
                         </div>
+                        <small class="form-help">When off, only the icon and greeting texts are hidden — quick prompts still show.</small>
                         <div class="form-group">
                             <label for="config-welcome-title">Welcome Title</label>
                             <input type="text" id="config-welcome-title" placeholder="Hi there! 👋" value="${escapeHtml(a.welcome_title || '')}" class="form-input">
@@ -1882,11 +1885,18 @@ function getAppearanceTabContent() {
                         <div class="form-group">
                             <label for="config-welcome-icon">Welcome Icon</label>
                             <select id="config-welcome-icon" class="form-input">
-                                <option value="default" ${(a.welcome_icon || 'default') === 'default' ? 'selected' : ''}>Default icon</option>
-                                <option value="avatar" ${a.welcome_icon === 'avatar' ? 'selected' : ''}>Agent profile picture</option>
-                                <option value="none" ${a.welcome_icon === 'none' ? 'selected' : ''}>Hidden</option>
+                                <option value="default" ${welcomeIconVal === 'default' ? 'selected' : ''}>Default icon</option>
+                                <option value="avatar" ${welcomeIconVal === 'avatar' ? 'selected' : ''}>Agent profile picture</option>
+                                <option value="__custom" ${welcomeIconIsUrl ? 'selected' : ''}>Custom image URL…</option>
+                                <option value="none" ${welcomeIconVal === 'none' ? 'selected' : ''}>Hidden</option>
                             </select>
                         </div>
+                        <div class="form-group" id="welcome-icon-url-group" style="${welcomeIconIsUrl ? '' : 'display:none'}">
+                            <label for="config-welcome-icon-url">Icon Image URL</label>
+                            <input type="url" id="config-welcome-icon-url" placeholder="https://example.com/icon.png" value="${welcomeIconIsUrl ? escapeHtml(welcomeIconVal) : ''}" class="form-input">
+                        </div>
+                        ${colorField('config-welcome-title-color', 'Welcome Title Color', a.welcome_title_color, '#1E293B')}
+                        ${colorField('config-welcome-text-color', 'Welcome Text Color', a.welcome_text_color, '#64748B')}
                     </div>
                 </details>
 
@@ -4028,6 +4038,13 @@ function setupCustomizeTabs() {
         });
     }
     
+    // Welcome icon "custom image URL" toggle
+    const welcomeIconSel = document.getElementById('config-welcome-icon');
+    welcomeIconSel?.addEventListener('change', () => {
+        const group = document.getElementById('welcome-icon-url-group');
+        if (group) group.style.display = welcomeIconSel.value === '__custom' ? '' : 'none';
+    });
+
     // Footer enabled toggle
     const footerEnabledCb = document.getElementById('config-footer-enabled');
     footerEnabledCb?.addEventListener('change', () => {
@@ -4491,6 +4508,8 @@ function getDefaultConfig() {
             welcome_title: 'Hi there! 👋',
             welcome_icon: 'default',
             welcome_enabled: true,
+            welcome_title_color: null,
+            welcome_text_color: null,
             bot_avatar_url: null,
             position: 'bottom-right',
             agent_caption: 'Powered by AI',
@@ -4582,7 +4601,14 @@ function populateConfigForm(config) {
     setVal('config-avatar-url', appearance.bot_avatar_url || '');
     setVal('config-welcome', appearance.welcome_message || 'Hi! How can I help you today?');
     setVal('config-welcome-title', appearance.welcome_title || 'Hi there! 👋');
-    setVal('config-welcome-icon', appearance.welcome_icon || 'default');
+    const loadedWelcomeIcon = appearance.welcome_icon || 'default';
+    const loadedWelcomeIconIsUrl = /^(https?:|data:|\/)/i.test(loadedWelcomeIcon);
+    setVal('config-welcome-icon', loadedWelcomeIconIsUrl ? '__custom' : loadedWelcomeIcon);
+    setVal('config-welcome-icon-url', loadedWelcomeIconIsUrl ? loadedWelcomeIcon : '');
+    const welcomeIconUrlGroup = document.getElementById('welcome-icon-url-group');
+    if (welcomeIconUrlGroup) welcomeIconUrlGroup.style.display = loadedWelcomeIconIsUrl ? '' : 'none';
+    setColor('config-welcome-title-color', appearance.welcome_title_color, '#1E293B');
+    setColor('config-welcome-text-color', appearance.welcome_text_color, '#64748B');
     const welcomeCb = document.getElementById('config-welcome-enabled');
     if (welcomeCb) welcomeCb.checked = appearance.welcome_enabled !== false;
     setVal('config-position', appearance.position || 'bottom-right');
@@ -4745,8 +4771,12 @@ function getConfigFromForm() {
             chat_title: val('config-title') || 'Chat with us',
             welcome_message: val('config-welcome') || 'Hi! How can I help you today?',
             welcome_title: val('config-welcome-title') || 'Hi there! 👋',
-            welcome_icon: val('config-welcome-icon') || 'default',
+            welcome_icon: val('config-welcome-icon') === '__custom'
+                ? (val('config-welcome-icon-url')?.trim() || 'default')
+                : (val('config-welcome-icon') || 'default'),
             welcome_enabled: checked('config-welcome-enabled') !== false,
+            welcome_title_color: autoColor('config-welcome-title-color'),
+            welcome_text_color: autoColor('config-welcome-text-color'),
             bot_avatar_url: val('config-avatar-url')?.trim() || null,
             position: val('config-position') || 'bottom-right',
             hide_branding: checked('config-hide-branding') || false,

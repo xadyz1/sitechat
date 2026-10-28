@@ -125,11 +125,13 @@ class SiteAppearanceConfig(BaseModel):
     chat_title: str = Field(default="Chat with us", description="Chat widget title")
     welcome_message: str = Field(default="Hi! How can I help you today?", description="Welcome message")
     welcome_title: str = Field(default="Hi there! 👋", description="Welcome screen heading")
-    welcome_icon: Literal["default", "avatar", "none"] = Field(
+    welcome_icon: str = Field(
         default="default",
-        description="Welcome screen icon: default | avatar (agent profile picture) | none (hidden)"
+        description="Welcome screen icon: default | avatar (agent profile picture) | none (hidden) | image URL"
     )
-    welcome_enabled: bool = Field(default=True, description="Show the welcome card when the chat opens")
+    welcome_enabled: bool = Field(default=True, description="Show the welcome greeting (icon + title + message); quick prompts still show when off")
+    welcome_title_color: Optional[str] = Field(default=None, description="Welcome heading text color (hex), defaults to theme")
+    welcome_text_color: Optional[str] = Field(default=None, description="Welcome message text color (hex), defaults to theme")
     bot_avatar_url: Optional[str] = Field(default=None, description="Custom bot avatar URL")
     position: str = Field(default="bottom-right", description="Widget position: bottom-left, bottom-center or bottom-right")
     # White-label options
