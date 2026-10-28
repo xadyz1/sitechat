@@ -4,7 +4,7 @@ subscriptions, revenue) to the central SwiftFinance ingest API so all
 SwiftApps revenue is reported in one place.
 
 Configured via:
-    SWIFTFINANCE_INGEST_URL — e.g. https://monofinance.duckdns.org/api/ingest
+    SWIFTFINANCE_INGEST_URL — e.g. https://finance.swiftapps.cloud/api/ingest
     SWIFTFINANCE_API_TOKEN  — token generated in SwiftFinance > Integrações
 
 Everything here is best-effort: failures are logged, never raised, so
