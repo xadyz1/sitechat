@@ -268,7 +268,7 @@ class SiteBehaviorConfig(BaseModel):
     )
     cart_url_template: Optional[str] = Field(
         default=None,
-        description="Custom add-to-cart URL template with {id} {url} {base} {name} placeholders (used when shop_platform=custom, or as fallback)"
+        description="Custom add-to-cart URL template with {id} {url} {eurl} {base} {name} placeholders (used when shop_platform=custom, or as fallback); {url}=raw product URL, {eurl}=URL-encoded"
     )
     cart_button_label: str = Field(default="Add to cart", description="Label for the add-to-cart button on product cards")
     order_lookup_enabled: bool = Field(default=False, description="Fetch live order status when the visitor mentions an order reference")

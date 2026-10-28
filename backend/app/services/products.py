@@ -8,7 +8,7 @@ import json
 import re
 import unicodedata
 from typing import Dict, List, Optional
-from urllib.parse import quote, urljoin, urlparse
+from urllib.parse import parse_qs, quote, urljoin, urlparse
 
 from bs4 import BeautifulSoup
 from loguru import logger
@@ -62,6 +62,21 @@ def detect_platform(url: str, html: str) -> Optional[str]:
     return None
 
 
+PID_PARAMS = {"variant", "variant_id", "id", "prod_id", "product_id", "prodid", "sku"}
+
+
+def _pid_from_url(url: str) -> Optional[str]:
+    """Product/variant id carried in a URL query param (e.g. Shopify ?variant=)."""
+    try:
+        q = parse_qs(urlparse(url or "").query)
+        for k, vals in q.items():
+            if k.lower() in PID_PARAMS and vals and vals[0]:
+                return str(vals[0])
+    except Exception:
+        pass
+    return None
+
+
 def _product_id(soup, url: str) -> Optional[str]:
     """WooCommerce / Shopify product (variant) IDs when present in the markup."""
     btn = soup.find(attrs={"data-product_id": True})
@@ -83,7 +98,7 @@ def _product_id(soup, url: str) -> Optional[str]:
         m = re.search(r"postid-(\d+)", " ".join(body.get("class") or []))
         if m:
             return m.group(1)
-    return None
+    return _pid_from_url(url)
 
 
 def extract_products(url: str, html: str) -> List[Dict]:
@@ -108,7 +123,7 @@ def extract_products(url: str, html: str) -> List[Dict]:
             image = _first(n.get("image"))
             if isinstance(image, dict):
                 image = image.get("url") or image.get("contentUrl")
-            node_pid = n.get("productID") or n.get("sku") or pid
+            node_pid = n.get("productID") or n.get("sku") or _pid_from_url(n.get("url") or "") or pid
             offer = _first(n.get("offers"))
             if not node_pid and isinstance(offer, dict):
                 node_pid = offer.get("sku")
@@ -162,7 +177,8 @@ def extract_products(url: str, html: str) -> List[Dict]:
     return out
 
 
-PRODUCT_PATH_RE = re.compile(r"/(produto|product|products|produtos|item|p|shop|loja|artigo)/[^/?#]+", re.I)
+PRODUCT_PATH_RE = re.compile(
+    r"/(produtos?|products?|produits?|prodott[oi]|artikel|items?|p|shop|loja|artigos?)/[^/?#]+", re.I)
 PRICE_RE = re.compile(r"(?:€|EUR|\$|£|USD|GBP|R\$)\s?(\d{1,5}(?:[.,]\d{3})*(?:[.,]\d{2})?)|(\d{1,5}(?:[.,]\d{3})*(?:[.,]\d{2}))\s?(?:€|EUR|\$|£|USD|GBP)", re.I)
 LOGO_RE = re.compile(r"logo|icon|sprite|placeholder|avatar|flag|payment|visa|mastercard|paypal", re.I)
 CURRENCY_SYMBOLS = {"€": "EUR", "$": "USD", "£": "GBP", "R$": "BRL"}
@@ -249,12 +265,15 @@ def _heuristic_products(url: str, soup: BeautifulSoup, pid: Optional[str] = None
         out.append({
             "name": name[:160], "url": urljoin(url, href), "image": urljoin(url, src),
             "price": price, "currency": cur, "description": "", "source": "heuristic",
-            "product_id": None, "platform": platform,
+            "product_id": _pid_from_url(href), "platform": platform,
         })
     return out
 
 
 def site_domain(url: str) -> str:
+    url = (url or "").strip()
+    if url and "://" not in url:
+        url = "https://" + url
     host = (urlparse(url).hostname or "").lower()
     return host[4:] if host.startswith("www.") else host
 
@@ -360,7 +379,9 @@ def build_cart_url(behavior: Dict, product: Dict, site_url: str) -> Optional[str
     """Add-to-cart deep link for a matched product, or None when not possible.
 
     behavior.shop_platform: auto | woocommerce | shopify | custom | none
-    custom uses behavior.cart_url_template with {id} {url} {base} {name} placeholders.
+    custom uses behavior.cart_url_template with {id} {url} {eurl} {base} {name}
+    placeholders — {url} is the raw product URL, {eurl} the URL-encoded value
+    (for templates that carry it as a query param).
     """
     platform = (behavior.get("shop_platform") or "auto")
     if platform == "none":
@@ -378,6 +399,7 @@ def build_cart_url(behavior: Dict, product: Dict, site_url: str) -> Optional[str
     parsed = urlparse(site_url or "")
     base = f"{parsed.scheme}://{parsed.netloc}" if parsed.netloc else ""
     return (tpl.replace("{id}", quote(str(pid or ""), safe=""))
-               .replace("{url}", quote(product.get("url") or "", safe=""))
+               .replace("{eurl}", quote(product.get("url") or "", safe=""))
+               .replace("{url}", product.get("url") or "")
                .replace("{base}", base)
                .replace("{name}", quote(str(product.get("name") or ""), safe="")))

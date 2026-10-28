@@ -2232,7 +2232,7 @@ function getBehaviorTabContent() {
             <div class="form-group" id="cart-template-group" style="display:${behavior.shop_platform === 'custom' ? '' : 'none'}">
                 <label for="config-cart-template">Cart URL Template</label>
                 <input type="text" id="config-cart-template" placeholder="{base}/cart?add={id}" value="${escapeHtml(behavior.cart_url_template || '')}" class="form-input">
-                <small class="form-help">Placeholders: {id} product ID, {url} product URL, {base} site origin, {name} product name</small>
+                <small class="form-help">Placeholders: {id} product ID, {url} product URL (raw), {eurl} URL-encoded product URL, {base} site origin, {name} product name</small>
             </div>
             <div class="form-group">
                 <label for="config-cart-label">Add-to-cart Button Label</label>

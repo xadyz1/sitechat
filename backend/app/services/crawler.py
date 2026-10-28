@@ -4,7 +4,7 @@ Web crawler service for scraping websites.
 import asyncio
 import re
 from typing import List, Dict, Set, Optional
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, urlunsplit
 import aiohttp
 from bs4 import BeautifulSoup
 from loguru import logger
@@ -39,13 +39,23 @@ class CrawlerService:
         self._browser = None
         self._context = None
     
+    @staticmethod
+    def _alt_host_url(url: str) -> Optional[str]:
+        """The same URL on the alternate host (www.foo ↔ foo) for retry."""
+        p = urlparse(url or "")
+        if not p.netloc:
+            return None
+        alt = p.netloc[4:] if p.netloc.startswith("www.") else "www." + p.netloc
+        return urlunsplit((p.scheme, alt, p.path, p.query, p.fragment))
+
     async def crawl(
         self,
         start_url: str,
         max_pages: int = None,
         include_patterns: List[str] = None,
         exclude_patterns: List[str] = None,
-        job_id: str = None
+        job_id: str = None,
+        _alt_retried: bool = False
     ) -> List[Dict]:
         """
         Crawl a website starting from the given URL.
@@ -135,6 +145,19 @@ class CrawlerService:
             await self._stop_browser()
 
         logger.info(f"Crawl complete. Total pages: {len(self.pages)} (rendered: {self.rendered_pages}, thin: {self.thin_pages})")
+
+        if not self.pages and not _alt_retried:
+            alt = self._alt_host_url(start_url)
+            if alt and alt != start_url:
+                logger.warning(f"No pages crawled from {start_url} — retrying on {alt}")
+                return await self.crawl(
+                    alt,
+                    max_pages=max_pages,
+                    include_patterns=include_patterns,
+                    exclude_patterns=exclude_patterns,
+                    job_id=job_id,
+                    _alt_retried=True,
+                )
         return self.pages
     
     async def _fetch_page(
@@ -345,7 +368,8 @@ class CrawlerService:
     
     # Query params that only re-order / filter / track — never new content
     NOISE_PARAMS = {"utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "fbclid", "gclid",
-                    "sort", "order", "orderby", "dir", "view", "focus", "ref", "src", "page_size", "per_page"}
+                    "sort", "order", "orderby", "dir", "view", "focus", "ref", "src", "page_size", "per_page",
+                    "variant", "currency", "country"}
     LANG_PARAMS = {"lang", "language", "locale", "hl", "lng"}
 
     def _prune_query(self, query: str, start_lang: Optional[str]) -> Optional[str]:
@@ -366,29 +390,36 @@ class CrawlerService:
             kept.append((k, v))
         return urlencode(kept)
 
+    @staticmethod
+    def _norm_host(netloc: str) -> str:
+        """Host without www./port so www↔apex links count as same-site."""
+        host = (netloc or "").lower().split(":")[0]
+        return host[4:] if host.startswith("www.") else host
+
     def _extract_links(self, html: str, base_domain: str, current_url: str) -> List[str]:
         """Extract links from HTML."""
         from urllib.parse import parse_qs
         soup = BeautifulSoup(html, "html.parser")
         links = []
+        base_host = self._norm_host(urlparse(base_domain).netloc)
         start_q = parse_qs(urlparse(current_url).query)
         start_lang = next((start_q[k][0] for k in start_q if k.lower() in self.LANG_PARAMS), None)
         if start_lang is None and soup.html is not None and soup.html.get("lang"):
             start_lang = soup.html.get("lang")  # site's declared language wins over link order
-        
+
         for anchor in soup.find_all("a", href=True):
             href = anchor["href"]
-            
+
             # Skip empty, javascript, and anchor links
             if not href or href.startswith(("#", "javascript:", "mailto:", "tel:")):
                 continue
-            
+
             # Make absolute URL
             absolute_url = urljoin(current_url, href)
             parsed = urlparse(absolute_url)
-            
-            # Only include links from same domain
-            if f"{parsed.scheme}://{parsed.netloc}" != base_domain:
+
+            # Only include links from same domain (www↔apex and http↔https count as same)
+            if self._norm_host(parsed.netloc) != base_host:
                 continue
             
             # Remove fragments
