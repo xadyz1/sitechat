@@ -732,12 +732,15 @@
       @media (max-width: 640px) {
         .sitechat-window {
           width: auto !important;
-          left: 8px !important;
-          right: 8px !important;
+          left: 10px !important;
+          right: 10px !important;
           bottom: calc(76px + env(safe-area-inset-bottom, 0px)) !important;
-          height: calc(100vh - 108px - env(safe-area-inset-bottom, 0px)) !important;
-          max-height: none !important;
-          border-radius: 14px !important;
+          top: auto !important;
+          height: min(66vh, 560px) !important;
+          height: min(66dvh, 560px) !important;
+          max-height: calc(100vh - 140px - env(safe-area-inset-bottom, 0px)) !important;
+          max-height: calc(100dvh - 140px - env(safe-area-inset-bottom, 0px)) !important;
+          border-radius: 16px !important;
         }
         .sitechat-header {
           padding: 14px 16px !important;
@@ -774,7 +777,8 @@
 
       @media (max-width: 380px) {
         .sitechat-window {
-          height: calc(100vh - 96px - env(safe-area-inset-bottom, 0px)) !important;
+          height: min(62vh, 540px) !important;
+          height: min(62dvh, 540px) !important;
         }
         .sitechat-header-text h3 {
           font-size: 15px !important;
