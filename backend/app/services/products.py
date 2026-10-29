@@ -454,6 +454,31 @@ def match_products(answer: str, products: List[Dict], limit: int = 4) -> List[Di
     return out
 
 
+def enrich_matches(matched: List[Dict], catalog: List[Dict]) -> List[Dict]:
+    """Fill missing fields on matched cards from same-name sibling docs.
+
+    A product can be catalogued twice (e.g. canonical URL from JSON-LD and a
+    `?lang=` listing card). If the matched doc lacks product_id/platform/etc.
+    the sibling often carries them — merge instead of losing the cart button.
+    """
+    by_name: Dict[str, List[Dict]] = {}
+    for p in catalog:
+        key = _norm(p.get("name") or "")
+        if key:
+            by_name.setdefault(key, []).append(p)
+    out = []
+    for m in matched:
+        merged = dict(m)
+        for sib in by_name.get(_norm(m.get("name") or ""), []):
+            if sib is m:
+                continue
+            for k in ("product_id", "variant_id", "platform", "image", "price", "currency", "url"):
+                if not merged.get(k) and sib.get(k):
+                    merged[k] = sib[k]
+        out.append(merged)
+    return out
+
+
 CART_TEMPLATES = {
     "woocommerce": "{base}/?add-to-cart={id}",
     "shopify": "{base}/cart/{id}:1",
@@ -480,7 +505,9 @@ def build_cart_url(behavior: Dict, product: Dict, site_url: str, qty: int = 1) -
     if not tpl:
         return None
     pid = product.get("product_id") or product.get("variant_id")
-    if "{id}" in tpl and not pid:
+    # {id} is required unless the template can fall back on the product URL
+    # ({url}/{eurl}) — shops may resolve the variant from the product page.
+    if "{id}" in tpl and not pid and "{url}" not in tpl and "{eurl}" not in tpl:
         return None
     qty = max(1, int(qty or 1))
     parsed = urlparse(site_url or "")

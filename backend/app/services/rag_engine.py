@@ -538,7 +538,7 @@ Rewritten search query (just the query, no explanation):"""
             return []
         try:
             from app.services.products import (
-                build_cart_url, cart_actions_enabled, resolve_cart_actions, site_domain,
+                build_cart_url, cart_actions_enabled, enrich_matches, resolve_cart_actions, site_domain,
             )
             behavior = (site.get("config") or {}).get("behavior") or {}
             if not cart_actions_enabled(behavior):
@@ -553,10 +553,10 @@ Rewritten search query (just the query, no explanation):"""
             ).to_list(2000)
             out = []
             for r in resolve_cart_actions(specs, products):
-                cart = build_cart_url(behavior, r["product"], site.get("url") or "", qty=r["qty"])
+                p = enrich_matches([r["product"]], products)[0]
+                cart = build_cart_url(behavior, p, site.get("url") or "", qty=r["qty"])
                 if not cart:
                     continue
-                p = r["product"]
                 out.append({
                     "name": p.get("name"), "qty": r["qty"], "cart_url": cart,
                     "product_id": p.get("product_id"), "image": p.get("image"),
