@@ -365,6 +365,11 @@ function switchView(viewId) {
 
     syncSidebarActiveNav(viewId);
 
+    // Live preview widget only belongs to the Sites tab
+    if (viewId !== 'sites') {
+        destroyLivePreviewWidget();
+    }
+
     // Close handoff SSE streams when navigating away
     if (viewId !== 'handoffs') {
         stopHandoffQueueStream();
@@ -1278,7 +1283,7 @@ let currentDetailSite = null;
 
 const VALID_DETAIL_TABS = [
     'appearance', 'embed', 'visibility', 'behavior', 'quick-prompts', 'triggers', 'training',
-    'help-center', 'handoff', 'leads', 'notifications', 'security', 'crawling', 'content'
+    'help-center', 'leads', 'notifications', 'security', 'crawling', 'content'
 ];
 
 const DETAIL_TAB_LABELS = {
@@ -1290,7 +1295,6 @@ const DETAIL_TAB_LABELS = {
     triggers: 'Triggers',
     training: 'Training',
     'help-center': 'Help Center',
-    handoff: 'Handoff',
     leads: 'Leads',
     notifications: 'Notifications',
     security: 'Security',
@@ -6035,7 +6039,6 @@ function cardBtnValuePlaceholder(action) {
     switch (action) {
         case 'open_url': return 'https://example.com';
         case 'open_url_modal': return 'Iframe embed code or URL';
-        case 'talk_to_agent': return 'Optional handoff message';
         default: return 'Message to send';
     }
 }
@@ -6114,7 +6117,6 @@ function renderQuickPromptsList() {
                                 <option value="send_message" ${b.action === 'send_message' || !b.action ? 'selected' : ''}>Ask AI</option>
                                 <option value="open_url" ${b.action === 'open_url' ? 'selected' : ''}>Open URL</option>
                                 <option value="open_url_modal" ${b.action === 'open_url_modal' ? 'selected' : ''}>Open URL (modal)</option>
-                                <option value="talk_to_agent" ${b.action === 'talk_to_agent' ? 'selected' : ''}>Live agent</option>
                             </select>
                             <input type="text" class="form-input quick-card-btn-value" value="${escapeHtml(b.value || '')}" placeholder="${cardBtnValuePlaceholder(b.action)}">
                             <button type="button" class="quick-card-btn-remove" title="Remove button">×</button>

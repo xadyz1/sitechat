@@ -339,9 +339,6 @@
                                     </div>
                                     <div class="detail-nav-group">
                                         <span class="detail-nav-group-label" id="detail-nav-h-ops">Operations</span>
-                                        <button type="button" class="detail-nav-item detail-tab" role="tab" data-tab="handoff" aria-selected="false" aria-controls="detail-tab-content" id="detail-tab-btn-handoff">
-                                            <span class="detail-nav-item-text">Handoff</span>
-                                        </button>
                                         <button type="button" class="detail-nav-item detail-tab" role="tab" data-tab="leads" aria-selected="false" aria-controls="detail-tab-content" id="detail-tab-btn-leads">
                                             <span class="detail-nav-item-text">Leads</span>
                                         </button>
@@ -1780,7 +1777,6 @@
                     <button type="button" class="customize-tab active" data-tab="appearance">Appearance</button>
                     <button type="button" class="customize-tab" data-tab="behavior">Behavior</button>
                     <button type="button" class="customize-tab" data-tab="triggers">Triggers</button>
-                    <button type="button" class="customize-tab" data-tab="handoff">Handoff</button>
                     <button type="button" class="customize-tab" data-tab="security">Security</button>
                     <button type="button" class="customize-tab" data-tab="crawling">Crawling</button>
                 </div>
@@ -2012,134 +2008,6 @@
                     </div>
                 </div>
                 
-                <div class="customize-content hidden" id="customize-handoff">
-                    <div class="handoff-settings-header">
-                        <h4>Human Handoff Settings</h4>
-                        <p>Configure when and how visitors can connect with human agents</p>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label class="toggle-label">
-                            <input type="checkbox" id="handoff-enabled" checked>
-                            <span class="toggle-switch"></span>
-                            Enable Human Handoff
-                        </label>
-                        <span class="form-hint">Allow visitors to request a human agent</span>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="confidence-threshold">AI Confidence Threshold</label>
-                        <div class="range-wrapper">
-                            <input type="range" id="confidence-threshold" min="0" max="100" value="30" class="range-input">
-                            <span class="range-value" id="confidence-threshold-value">30%</span>
-                        </div>
-                        <span class="form-hint">Suggest handoff when AI confidence is below this level</span>
-                    </div>
-                    
-                    <div class="form-divider"></div>
-                    
-                    <div class="form-group">
-                        <label class="toggle-label">
-                            <input type="checkbox" id="business-hours-enabled">
-                            <span class="toggle-switch"></span>
-                            Enable Business Hours
-                        </label>
-                        <span class="form-hint">Only allow handoffs during specific hours</span>
-                    </div>
-                    
-                    <div class="business-hours-config hidden" id="business-hours-config">
-                        <div class="form-group">
-                            <label for="business-timezone">Timezone</label>
-                            <select id="business-timezone" class="form-select">
-                                <option value="UTC">UTC</option>
-                                <option value="America/New_York">Eastern Time (ET)</option>
-                                <option value="America/Chicago">Central Time (CT)</option>
-                                <option value="America/Denver">Mountain Time (MT)</option>
-                                <option value="America/Los_Angeles">Pacific Time (PT)</option>
-                                <option value="Europe/London">London (GMT)</option>
-                                <option value="Europe/Paris">Central European (CET)</option>
-                                <option value="Asia/Tokyo">Japan (JST)</option>
-                                <option value="Australia/Sydney">Sydney (AEST)</option>
-                            </select>
-                        </div>
-                        
-                        <div class="business-hours-schedule" id="business-hours-schedule">
-                            <div class="schedule-row">
-                                <label class="day-toggle">
-                                    <input type="checkbox" data-day="mon" checked>
-                                    <span>Mon</span>
-                                </label>
-                                <input type="time" class="schedule-start" data-day="mon" value="09:00">
-                                <span class="schedule-to">to</span>
-                                <input type="time" class="schedule-end" data-day="mon" value="17:00">
-                            </div>
-                            <div class="schedule-row">
-                                <label class="day-toggle">
-                                    <input type="checkbox" data-day="tue" checked>
-                                    <span>Tue</span>
-                                </label>
-                                <input type="time" class="schedule-start" data-day="tue" value="09:00">
-                                <span class="schedule-to">to</span>
-                                <input type="time" class="schedule-end" data-day="tue" value="17:00">
-                            </div>
-                            <div class="schedule-row">
-                                <label class="day-toggle">
-                                    <input type="checkbox" data-day="wed" checked>
-                                    <span>Wed</span>
-                                </label>
-                                <input type="time" class="schedule-start" data-day="wed" value="09:00">
-                                <span class="schedule-to">to</span>
-                                <input type="time" class="schedule-end" data-day="wed" value="17:00">
-                            </div>
-                            <div class="schedule-row">
-                                <label class="day-toggle">
-                                    <input type="checkbox" data-day="thu" checked>
-                                    <span>Thu</span>
-                                </label>
-                                <input type="time" class="schedule-start" data-day="thu" value="09:00">
-                                <span class="schedule-to">to</span>
-                                <input type="time" class="schedule-end" data-day="thu" value="17:00">
-                            </div>
-                            <div class="schedule-row">
-                                <label class="day-toggle">
-                                    <input type="checkbox" data-day="fri" checked>
-                                    <span>Fri</span>
-                                </label>
-                                <input type="time" class="schedule-start" data-day="fri" value="09:00">
-                                <span class="schedule-to">to</span>
-                                <input type="time" class="schedule-end" data-day="fri" value="17:00">
-                            </div>
-                            <div class="schedule-row">
-                                <label class="day-toggle">
-                                    <input type="checkbox" data-day="sat">
-                                    <span>Sat</span>
-                                </label>
-                                <input type="time" class="schedule-start" data-day="sat" value="09:00" disabled>
-                                <span class="schedule-to">to</span>
-                                <input type="time" class="schedule-end" data-day="sat" value="17:00" disabled>
-                            </div>
-                            <div class="schedule-row">
-                                <label class="day-toggle">
-                                    <input type="checkbox" data-day="sun">
-                                    <span>Sun</span>
-                                </label>
-                                <input type="time" class="schedule-start" data-day="sun" value="09:00" disabled>
-                                <span class="schedule-to">to</span>
-                                <input type="time" class="schedule-end" data-day="sun" value="17:00" disabled>
-                            </div>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="offline-message">Offline Message</label>
-                            <textarea id="offline-message" class="form-textarea" rows="2">We're currently offline. Leave your email and we'll get back to you.</textarea>
-                            <span class="form-hint">Shown when outside business hours</span>
-                        </div>
-                    </div>
-                    
-                    <div class="form-actions">
-                        <button type="button" class="btn btn-primary" id="save-handoff-config">Save Handoff Settings</button>
-                    </div>
-                </div>
                 
                 <div class="customize-content hidden" id="customize-security">
                     <div class="security-settings-header">

@@ -268,10 +268,8 @@
           config.session.sessionTimeoutMinutes = ss["session_timeout_minutes"] || 0;
           if (!conversationStarted) sessionId = resolveSessionId();
         }
-        if (data["handoff"]) {
-          const h = data["handoff"];
-          config.handoffEnabled = h["enabled"] !== false && h["has_agents"] === true;
-        }
+        // Live Agent handoff is not offered — handoffEnabled stays false so the
+        // header button and handoff suggestion never appear, regardless of remote config.
         refreshWidgetUI();
         applyVisibility();
         scheduleStartMode();
@@ -2144,7 +2142,7 @@
       } else if (action === "open_url_modal" && value) {
         openEmbedModal(value);
       } else if (action === "talk_to_agent") {
-        handoff["requestHandoff"](value || "user_request");
+        config.handoffEnabled && handoff["requestHandoff"](value || "user_request");
       } else if (action === "send_message") {
         const msg = value || cardBtn["textContent"]["trim"]();
         if (msg) {
