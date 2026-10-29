@@ -1659,6 +1659,7 @@ function initTabHandlers(tabId) {
             loadQuickPrompts();
             break;
         case 'triggers':
+            initTriggersTabHandlers();
             loadTriggers();
             break;
         case 'help-center':
@@ -2380,7 +2381,22 @@ function getTriggersTabContent() {
                     <span>Loading triggers...</span>
                 </div>
             </div>
-            
+
+            <div class="triggers-empty hidden" id="triggers-empty">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+                </svg>
+                <p>No triggers configured</p>
+                <span>Create triggers to proactively engage visitors</span>
+                <button type="button" class="btn btn-sm btn-primary" id="add-trigger-empty-btn">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="12" y1="5" x2="12" y2="19"/>
+                        <line x1="5" y1="12" x2="19" y2="12"/>
+                    </svg>
+                    Add First Trigger
+                </button>
+            </div>
+
             <div class="triggers-settings" style="margin-top: 20px;">
                 <div class="form-group">
                     <label for="global-cooldown">Cooldown between triggers</label>
@@ -2391,6 +2407,15 @@ function getTriggersTabContent() {
                         <option value="300000">5 minutes</option>
                     </select>
                 </div>
+            </div>
+
+            <div class="triggers-actions">
+                <button type="button" class="btn btn-secondary btn-sm" id="create-default-triggers">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+                    </svg>
+                    Create Default Triggers
+                </button>
             </div>
         </div>
     `;
@@ -4761,14 +4786,19 @@ function populateConfigForm(config) {
 }
 
 function getConfigFromForm() {
-    const val = (id) => document.getElementById(id)?.value;
-    const checked = (id) => document.getElementById(id)?.checked;
+    // Reads must stay inside the live tab panel: index.html still carries a
+    // hidden legacy panel that reuses the same input IDs, and document-wide
+    // lookups would silently fall back to those stale elements.
+    const tabScope = document.getElementById('detail-tab-content') || document;
+    const val = (id) => tabScope.querySelector(`#${id}`)?.value;
+    const checked = (id) => tabScope.querySelector(`#${id}`)?.checked;
+    const radio = (name) => tabScope.querySelector(`input[name="${name}"]:checked`)?.value;
     // Auto-capable colors: paired "-text" input empty => null (inherit)
     const autoColor = (id) => {
         const text = val(id + '-text');
         return text && text.trim() ? text.trim() : null;
     };
-    const launcherStyle = document.querySelector('input[name="launcher-style"]:checked')?.value || 'button';
+    const launcherStyle = radio('launcher-style') || 'button';
 
     return {
         appearance: {
@@ -4790,7 +4820,7 @@ function getConfigFromForm() {
             agent_caption: val('config-agent-caption') || 'Powered by AI',
             show_online_indicator: checked('config-show-online') !== false,
             online_indicator_color: val('config-online-color') || '#22C55E',
-            theme: document.querySelector('input[name="widget-theme"]:checked')?.value || 'light_accent',
+            theme: radio('widget-theme') || 'light_accent',
             border_radius: Math.min(28, Math.max(0, parseInt(val('config-border-radius')) || 0)),
             header_background: autoColor('config-header-bg'),
             header_text_color: autoColor('config-header-text-color'),
@@ -4823,8 +4853,8 @@ function getConfigFromForm() {
             offset_x: Math.min(200, Math.max(0, parseInt(val('config-offset-x')) || 0)),
             offset_y: Math.min(200, Math.max(0, parseInt(val('config-offset-y')) || 0)),
             movable_window: checked('config-movable-window') || false,
-            start_mode: document.querySelector('input[name="start-mode"]:checked')?.value || 'button_only',
-            start_delay_seconds: document.querySelector('input[name="start-timing"]:checked')?.value === 'delay'
+            start_mode: radio('start-mode') || 'button_only',
+            start_delay_seconds: radio('start-timing') === 'delay'
                 ? Math.min(60, Math.max(1, parseInt(val('config-start-delay')) || 5)) : 0,
             greeting_message: val('config-greeting-message')?.trim() || null,
             sound_agent_message: val('config-sound-agent') || 'none',
@@ -4858,8 +4888,11 @@ async function saveConfig() {
         const config = getConfigFromForm();
         // Only send sections whose form is on screen — the PUT replaces each
         // section wholesale, so absent fields would reset saved values.
-        if (!document.getElementById('appearance-form')) delete config.appearance;
-        if (!document.getElementById('config-prompt')) delete config.behavior;
+        // Check inside detail-tab-content only: a hidden legacy panel reuses
+        // the same IDs and would fool a document-wide lookup.
+        const inTab = (id) => !!document.getElementById('detail-tab-content')?.querySelector(`#${id}`);
+        if (!inTab('appearance-form')) delete config.appearance;
+        if (!inTab('config-prompt')) delete config.behavior;
         
         const response = await fetch(`${API_BASE}/sites/${currentDetailSite.site_id}/config`, {
             method: 'PUT',
@@ -7214,22 +7247,23 @@ let triggersState = {
 };
 
 function setupTriggersEventListeners() {
-    // Add trigger buttons
-    document.getElementById('add-trigger-btn')?.addEventListener('click', () => openTriggerModal());
-    document.getElementById('add-trigger-empty-btn')?.addEventListener('click', () => openTriggerModal());
-    
-    // Create default triggers
-    document.getElementById('create-default-triggers')?.addEventListener('click', createDefaultTriggers);
-    
     // Trigger modal
     document.getElementById('close-trigger-modal')?.addEventListener('click', closeTriggerModal);
     document.getElementById('cancel-trigger')?.addEventListener('click', closeTriggerModal);
     document.getElementById('trigger-form')?.addEventListener('submit', saveTrigger);
-    
+
     // Add condition
     document.getElementById('add-condition-btn')?.addEventListener('click', addConditionRow);
-    
-    // Global cooldown
+}
+
+// The triggers tab renders dynamically, so its controls must be (re)bound
+// every time the tab content is injected — DOMContentLoaded bindings would
+// attach to stale/duplicate elements elsewhere in the document.
+function initTriggersTabHandlers() {
+    document.getElementById('add-trigger-btn')?.addEventListener('click', () => openTriggerModal());
+    document.getElementById('add-trigger-empty-btn')?.addEventListener('click', () => openTriggerModal());
+    document.getElementById('create-default-triggers')?.addEventListener('click', createDefaultTriggers);
+
     document.getElementById('global-cooldown')?.addEventListener('change', async (e) => {
         if (!currentDetailSite) return;
         try {
@@ -7248,14 +7282,15 @@ async function loadTriggers() {
     
     const listEl = document.getElementById('triggers-list');
     const emptyEl = document.getElementById('triggers-empty');
-    
+    if (!listEl) return;
+
     listEl.innerHTML = `
         <div class="triggers-loading">
             <div class="spinner-sm"></div>
             <span>Loading triggers...</span>
         </div>
     `;
-    emptyEl.classList.add('hidden');
+    emptyEl?.classList.add('hidden');
     
     try {
         const response = await fetch(`${API_BASE}/sites/${currentDetailSite.site_id}/triggers`, {
@@ -7285,14 +7320,15 @@ async function loadTriggers() {
 function renderTriggersList() {
     const listEl = document.getElementById('triggers-list');
     const emptyEl = document.getElementById('triggers-empty');
-    
+    if (!listEl) return;
+
     if (triggersState.triggers.length === 0) {
         listEl.innerHTML = '';
-        emptyEl.classList.remove('hidden');
+        emptyEl?.classList.remove('hidden');
         return;
     }
-    
-    emptyEl.classList.add('hidden');
+
+    emptyEl?.classList.add('hidden');
     listEl.innerHTML = '';
     
     triggersState.triggers.forEach(trigger => {
