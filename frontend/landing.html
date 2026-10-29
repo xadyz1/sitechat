@@ -141,7 +141,8 @@
           </div>
           <script>
           (function () {
-            var SITE_ID = '713b6838215c';
+            var DEFAULT_SITE_ID = '713b6838215c';
+            function heroSiteId() { return window.__landingDemoSiteId || DEFAULT_SITE_ID; }
             var SESSION_ID = 'hero-' + Math.random().toString(36).slice(2);
             var API_BASE = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
               ? 'http://' + location.host
@@ -182,7 +183,7 @@
               fetch(API_BASE + '/api/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: text, session_id: SESSION_ID, site_id: SITE_ID })
+                body: JSON.stringify({ message: text, session_id: SESSION_ID, site_id: heroSiteId() })
               })
               .then(function (r) { return r.json(); })
               .then(function (data) {
@@ -908,6 +909,7 @@ __WIDGET_SRI_JS__
         .then(function (r) { return r.ok ? r.json() : {}; })
         .then(function (cfg) {
           cfg = cfg || {};
+          window.__landingDemoSiteId = cfg.demo_site_id || '';
           fillAdSlot('slot_1', cfg.ad_slot_1);
           fillAdSlot('slot_2', cfg.ad_slot_2);
           if (cfg.demo_booking_embed) bookingEmbed = cfg.demo_booking_embed;
@@ -1008,16 +1010,6 @@ __WIDGET_SRI_JS__
 
       // Widget bubble behavior is fully handled in frontend/src/widget/chatbot.js.
     })();
-  </script>
-  <script>
-  (function() {
-    var s = document.createElement('script');
-    s.src = 'https://agent.swiftapps.cloud/widget/chatbot.js';
-    s.async = true;
-    s.dataset.siteId = '4cecc587d52c';
-    s.dataset.apiUrl = 'https://agent.swiftapps.cloud';
-    document.head.appendChild(s);
-  })();
   </script>
 </body>
 </html>
