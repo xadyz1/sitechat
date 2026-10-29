@@ -153,9 +153,11 @@ class RAGEngine:
         # Get site URL filter and name if site_id provided
         site_url_filter = None
         site_name = None
+        site: Optional[Dict] = None
         knowledge_urls: List[str] = []
         site_behavior: Dict = {}
         catalog_addendum = ""
+        cart_actions: List[Dict] = []
         if site_id:
             site = await mongodb.db.sites.find_one({"site_id": site_id})
             if site:
@@ -168,7 +170,7 @@ class RAGEngine:
                 ]
                 site_behavior = (site.get("config") or {}).get("behavior") or {}
                 if site_behavior.get("product_cards", True):
-                    catalog_addendum = await self._catalog_addendum(mongodb, site.get("url"))
+                    catalog_addendum = await self._catalog_addendum(mongodb, site.get("url"), site_behavior)
                 from app.services.orders import order_context_addendum
                 catalog_addendum += await order_context_addendum(message, site_behavior)
                 logger.info(f"Filtering by site: {site_url_filter}")
@@ -267,6 +269,11 @@ class RAGEngine:
                 prompt_addendum=catalog_addendum,
             )
             
+            # 7b. Strip agent cart markers and resolve them into cart actions
+            from app.services.products import parse_cart_actions
+            answer, cart_specs = parse_cart_actions(answer)
+            cart_actions = await self._resolve_cart_actions(mongodb, site, cart_specs)
+
             # 8. Follow-up suggestions are disabled to avoid an extra LLM call.
             follow_ups = []
             
@@ -293,9 +300,10 @@ class RAGEngine:
                 sources=sources,
                 confidence=confidence,
                 follow_up_questions=follow_ups,
-                session_id=session_id
+                session_id=session_id,
+                cart_actions=cart_actions
             )
-            
+
         except Exception as e:
             logger.error(f"RAG engine error: {e}")
             raise
@@ -327,7 +335,7 @@ class RAGEngine:
                 ]
                 site_behavior = (site.get("config") or {}).get("behavior") or {}
                 if site_behavior.get("product_cards", True):
-                    catalog_addendum = await self._catalog_addendum(mongodb, site.get("url"))
+                    catalog_addendum = await self._catalog_addendum(mongodb, site.get("url"), site_behavior)
                 from app.services.orders import order_context_addendum
                 catalog_addendum += await order_context_addendum(message, site_behavior)
 
@@ -360,13 +368,15 @@ class RAGEngine:
                 full_response += chunk
                 yield chunk
 
+            from app.services.products import parse_cart_actions
+            clean_response, _ = parse_cart_actions(full_response)
             await mongodb.save_message(
                 session_id, "user", message, site_id=site_id
             )
             await mongodb.save_message(
                 session_id,
                 "assistant",
-                full_response,
+                clean_response,
                 sources=[s.dict() for s in sources],
                 site_id=site_id,
             )
@@ -506,20 +516,57 @@ Rewritten search query (just the query, no explanation):"""
     # value equal to it means the site never customised its prompt.
     _PLACEHOLDER_PROMPT = "You are a helpful assistant. Answer questions based on the provided context."
 
-    async def _catalog_addendum(self, mongodb, site_url: Optional[str]) -> str:
+    async def _catalog_addendum(self, mongodb, site_url: Optional[str],
+                                site_behavior: Optional[Dict] = None) -> str:
         """Exact product names for shops so answers can be matched to product cards."""
         try:
-            from app.services.products import site_domain, catalog_prompt
+            from app.services.products import site_domain, catalog_prompt, cart_actions_enabled
             domain = site_domain(site_url or "")
             if not domain:
                 return ""
             products = await mongodb.db.products.find(
                 {"domain": domain}, {"_id": 0, "name": 1, "price": 1, "currency": 1}
             ).sort("name", 1).to_list(60)
-            return catalog_prompt(products)
+            return catalog_prompt(products, cart_enabled=cart_actions_enabled(site_behavior or {}))
         except Exception as e:
             logger.debug(f"catalog addendum skipped: {e}")
             return ""
+
+    async def _resolve_cart_actions(self, mongodb, site: Optional[Dict], specs: List[Dict]) -> List[Dict]:
+        """Turn parsed ``[[cart:...]]`` specs into items the widget can add silently."""
+        if not site or not specs:
+            return []
+        try:
+            from app.services.products import (
+                build_cart_url, cart_actions_enabled, resolve_cart_actions, site_domain,
+            )
+            behavior = (site.get("config") or {}).get("behavior") or {}
+            if not cart_actions_enabled(behavior):
+                return []
+            domain = site_domain(site.get("url") or "")
+            if not domain:
+                return []
+            products = await mongodb.db.products.find(
+                {"domain": domain},
+                {"_id": 0, "name": 1, "url": 1, "image": 1, "price": 1,
+                 "currency": 1, "product_id": 1, "platform": 1}
+            ).to_list(2000)
+            out = []
+            for r in resolve_cart_actions(specs, products):
+                cart = build_cart_url(behavior, r["product"], site.get("url") or "", qty=r["qty"])
+                if not cart:
+                    continue
+                p = r["product"]
+                out.append({
+                    "name": p.get("name"), "qty": r["qty"], "cart_url": cart,
+                    "product_id": p.get("product_id"), "image": p.get("image"),
+                    "price": p.get("price"), "currency": p.get("currency"),
+                    "url": p.get("url"),
+                })
+            return out
+        except Exception as e:
+            logger.debug(f"cart action resolution failed: {e}")
+            return []
 
     def _get_system_prompt(self, site_name: str = None, custom_prompt: str = None) -> str:
         """System prompt: site-configured prompt wins, else the built-in default."""

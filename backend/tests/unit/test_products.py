@@ -1,4 +1,11 @@
-from app.services.products import match_products, _norm
+from app.services.products import (
+    build_cart_url,
+    cart_actions_enabled,
+    match_products,
+    parse_cart_actions,
+    resolve_cart_actions,
+    _norm,
+)
 
 
 PRODUCTS = [
@@ -34,3 +41,46 @@ def test_nbsp_does_not_merge_words():
 def test_no_match_returns_empty():
     assert match_products("nada relacionado com produtos", PRODUCTS) == []
     assert match_products("Cuffed Beanie", []) == []
+
+
+def test_parse_cart_actions_strips_marker():
+    answer = 'Feito! [[cart:{"items":[{"name":"Cuffed Beanie","qty":2}]}]]'
+    clean, specs = parse_cart_actions(answer)
+    assert clean == "Feito!"
+    assert specs == [{"name": "Cuffed Beanie", "qty": 2}]
+
+
+def test_parse_cart_actions_malformed_marker_removed():
+    clean, specs = parse_cart_actions("texto [[cart:{oops}] mais")
+    assert "[[cart" not in clean
+    assert specs == []
+
+
+def test_parse_cart_actions_qty_clamped_and_default():
+    _, specs = parse_cart_actions('[[cart:{"items":[{"name":"A"},{"name":"B","qty":999}]}]]')
+    assert specs == [{"name": "A", "qty": 1}, {"name": "B", "qty": 10}]
+
+
+def test_resolve_cart_actions_matches_catalog():
+    specs = [{"name": "Cuffed Beanie", "qty": 3}, {"name": "inexistente", "qty": 1}]
+    resolved = resolve_cart_actions(specs, PRODUCTS)
+    assert len(resolved) == 1
+    assert resolved[0]["product"]["name"] == "Cuffed Beanie"
+    assert resolved[0]["qty"] == 3
+
+
+def test_build_cart_url_qty_placeholder_and_patch():
+    behavior = {"shop_platform": "custom", "cart_url_template": "{base}/cart/add?variant={id}&qty={qty}"}
+    p = {"name": "Cuffed Beanie", "url": "https://shop.example/p/3", "product_id": "42"}
+    assert build_cart_url(behavior, p, "https://shop.example", qty=4) == "https://shop.example/cart/add?variant=42&qty=4"
+    # Hardcoded qty=1 in the template is patched when another qty is requested.
+    behavior["cart_url_template"] = "{base}/cart/add?variant={id}&qty=1"
+    assert build_cart_url(behavior, p, "https://shop.example", qty=4) == "https://shop.example/cart/add?variant=42&qty=4"
+    assert build_cart_url(behavior, p, "https://shop.example") == "https://shop.example/cart/add?variant=42&qty=1"
+
+
+def test_cart_actions_enabled():
+    assert cart_actions_enabled({"shop_platform": "custom", "cart_url_template": "{base}/cart?p={id}"})
+    assert cart_actions_enabled({"shop_platform": "woocommerce"})
+    assert not cart_actions_enabled({"shop_platform": "none"})
+    assert not cart_actions_enabled({"shop_platform": "auto"})

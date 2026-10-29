@@ -37,6 +37,10 @@ class ChatResponse(BaseModel):
     suggest_handoff: bool = Field(default=False, description="Whether to suggest human handoff")
     handoff_reason: Optional[str] = Field(None, description="Reason for suggesting handoff")
     products: List[Dict[str, Any]] = Field(default_factory=list, description="Shop products mentioned in the answer")
+    cart_actions: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="Agent-requested add-to-cart actions: {name, qty, cart_url, product_id, image, price, currency, url} — the widget executes them silently"
+    )
 
 
 # ==================== Crawl Models ====================
@@ -172,7 +176,7 @@ class SiteAppearanceConfig(BaseModel):
     window_height: int = Field(default=560, ge=320, le=860, description="Chat window height in px")
     launcher_style: str = Field(
         default="button",
-        description="Launcher style: button, text_button, agent_profile, quick_input"
+        description="Launcher style: button, text_button, agent_profile, quick_input, float_button (float button that opens the chat as a side panel)"
     )
     launcher_text: Optional[str] = Field(default=None, description="Text for text_button/quick_input launchers")
     launcher_icon: Optional[str] = Field(

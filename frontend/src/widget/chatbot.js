@@ -449,6 +449,22 @@
         border-radius: ${br}px !important;
         ${windowPos}
       }
+      ${config.launcherStyle === "float_button" ? `
+      .sitechat-widget.sitechat-sidepanel .sitechat-window {
+        top: 0 !important;
+        bottom: 0 !important;
+        ${left ? "left: 0 !important; right: auto !important;" : "right: 0 !important; left: auto !important;"}
+        translate: none !important;
+        width: min(${Math.max(320, config.windowWidth || 400)}px, 100vw) !important;
+        height: 100dvh !important;
+        max-height: none !important;
+        border-radius: 0 !important;
+        box-shadow: ${left ? "18px" : "-18px"} 0 50px rgba(0, 0, 0, 0.28) !important;
+        transform: translateX(${left ? "-105%" : "105%"}) !important;
+      }
+      .sitechat-widget.sitechat-sidepanel .sitechat-window.open {
+        transform: translateX(0) !important;
+      }` : ""}
       .sitechat-header {
         background: linear-gradient(135deg, ${headerBg}, ${adjustHexColor(headerBg, -20)}) !important;
         color: ${headerText} !important;
@@ -528,6 +544,29 @@
       .sitechat-product-btn.primary { background: ${prodBtnBg} !important; border-color: ${prodBtnBg} !important; color: ${prodBtnText} !important; }
       .sitechat-product-btn.primary:hover { background: ${prodBtnBg} !important; }
       .sitechat-product-btn:not(.primary) { color: ${prodBtnBg} !important; border-color: ${prodBtnBg}55 !important; }
+      .sitechat-product-btn.added { background: #16a34a !important; border-color: #16a34a !important; color: #ffffff !important; }
+      .sitechat-product-btn:disabled { opacity: 0.7 !important; cursor: default !important; }
+      .sitechat-cart-confirm {
+        margin: -8px 0 4px 42px;
+        padding: 9px 12px;
+        border-radius: 10px;
+        background: ${primary}0d;
+        border: 1px solid ${primary}25;
+        font-size: 12.5px;
+        line-height: 1.5;
+        color: ${muted};
+      }
+      .sitechat-cart-confirm-title {
+        font-size: 10.5px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        opacity: 0.6;
+        margin-bottom: 3px;
+      }
+      .sitechat-cart-confirm-line.ok { color: #16a34a; }
+      .sitechat-cart-confirm-line.fail { color: #dc2626; }
+      .sitechat-cart-confirm-line a { color: ${primary} !important; }
       .sitechat-help-portal-link { color: ${primary} !important; }
       .sitechat-help-category:hover { border-color: ${primary}50 !important; }
       .sitechat-help-article-link:hover { border-color: ${primary}50 !important; color: ${primary} !important; }
@@ -552,6 +591,8 @@
     el.id = "sitechat-dynamic-styles";
     el.textContent = css;
     document.head.appendChild(el);
+    const widgetEl = document.querySelector(".sitechat-widget");
+    widgetEl && widgetEl.classList.toggle("sitechat-sidepanel", config.launcherStyle === "float_button");
   }
   function injectResponsiveStyles() {
     const G = document["getElementById"]("sitechat-responsive-styles");
@@ -1102,7 +1143,7 @@
   // --- Move & resize chat window (desktop only, when enabled) ---
   let movableApplied = false;
   function applyMovableWindow() {
-    if (movableApplied || !config.movableWindow || isMobileDevice()) return;
+    if (movableApplied || !config.movableWindow || isMobileDevice() || config.launcherStyle === "float_button") return;
     movableApplied = true;
     windowEl.style.touchAction = "none";
 
@@ -1971,7 +2012,7 @@
   const baseStyleEl = document["createElement"]("style");
   baseStyleEl["textContent"] = baseWidgetCss + embedModalCss, document["head"]["appendChild"](baseStyleEl);
   const widgetRoot = document["createElement"]("div");
-  widgetRoot["className"] = "sitechat-widget" + (config.previewMode ? " sitechat-preview" : ""), widgetRoot["innerHTML"] = '\n    <button class="sitechat-toggle" aria-label="Toggle chat">\n      <svg class="sitechat-icon-chat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">\n        <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2v10z"/>\n      </svg>\n      <svg class="sitechat-icon-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">\n        <line x1="18" y1="6" x2="6" y2="18"/>\n        <line x1="6" y1="6" x2="18" y2="18"/>\n      </svg>\n    </button>\n    \n    <div class="sitechat-window">\n      <div class="sitechat-header">\n        <div class="sitechat-header-icon">\n          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">\n            <path d="M12 2L2 7l10 5 10-5-10-5z"/>\n            <path d="M2 17l10 5 10-5"/>\n            <path d="M2 12l10 5 10-5"/>\n          </svg>\n        </div>\n        <div class="sitechat-header-text">\n          <h3>' + config.title + '</h3>\n          <p>' + escapeHtml(config.agentCaption) + '</p>\n        </div>\n        <div class="sitechat-header-actions" style="display:flex;align-items:center;gap:8px;flex-shrink:0;">\n          <button type="button" class="sitechat-handoff-btn" title="Talk to a live agent" data-state="idle" style="display:none">\n            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">\n              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>\n              <circle cx="9" cy="7" r="4"/>\n              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>\n              <path d="M16 3.13a4 4 0 0 1 0 7.75"/>\n            </svg>\n            <span class="sitechat-live-agent-label">Live agent</span>\n          </button>\n          <button type="button" class="sitechat-header-close sitechat-close-btn" aria-label="Close chat">\n            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">\n              <line x1="18" y1="6" x2="6" y2="18"/>\n              <line x1="6" y1="6" x2="18" y2="18"/>\n            </svg>\n          </button>\n        </div>\n      </div>\n      \n      <div class="sitechat-messages">\n        <div class="sitechat-welcome">\n          <div class="sitechat-welcome-icon">\n            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">\n              <path d="M12 2L2 7l10 5 10-5-10-5z"/>\n              <path d="M2 17l10 5 10-5"/>\n              <path d="M2 12l10 5 10-5"/>\n            </svg>\n          </div>\n          <h4>Hi there! 👋</h4>\n          <p>I\'m your AI assistant. Ask me anything about this website.</p>\n          <div class="sitechat-welcome-suggestions"></div>\n        </div>\n      </div>\n      \n      <div class="sitechat-help-panel" hidden>\n        <div class="sitechat-help-top">\n          <a class="sitechat-help-portal-link" href="#" target="_blank" rel="noopener noreferrer">Open Help Center <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>\n        </div>\n        <div class="sitechat-help-search">\n          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>\n          <input type="text" class="sitechat-help-search-input" placeholder="Search for help...">\n        </div>\n        <div class="sitechat-help-content"></div>\n      </div>\n      \n      <div class="sitechat-input-wrapper">\n        <form class="sitechat-input-form">\n          <input type="text" class="sitechat-input" placeholder="Type your message..." autocomplete="off">\n          <button type="submit" class="sitechat-send" disabled>\n            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">\n              <line x1="22" y1="2" x2="11" y2="13"/>\n              <polygon points="22 2 15 22 11 13 2 9 22 2"/>\n            </svg>\n          </button>\n        </form>\n      </div>\n      \n      <div class="sitechat-window-nav" hidden>\n        <button type="button" class="sitechat-nav-btn active" data-nav="chat">\n          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2v10z"/></svg>\n          <span>Conversation</span>\n        </button>\n        <button type="button" class="sitechat-nav-btn" data-nav="help">\n          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>\n          <span class="sitechat-nav-help-label">Help</span>\n        </button>\n      </div>\n      \n      <div class="sitechat-branding">\n        <a href="'+ config.apiUrl +'" target="_blank" rel="noopener noreferrer">\n          Powered by <strong>SwiftChat</strong>\n        </a>\n      </div>\n    </div>\n  ', 
+  widgetRoot["className"] = "sitechat-widget" + (config.previewMode ? " sitechat-preview" : "") + (config.launcherStyle === "float_button" ? " sitechat-sidepanel" : ""), widgetRoot["innerHTML"] = '\n    <button class="sitechat-toggle" aria-label="Toggle chat">\n      <svg class="sitechat-icon-chat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">\n        <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2v10z"/>\n      </svg>\n      <svg class="sitechat-icon-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">\n        <line x1="18" y1="6" x2="6" y2="18"/>\n        <line x1="6" y1="6" x2="18" y2="18"/>\n      </svg>\n    </button>\n    \n    <div class="sitechat-window">\n      <div class="sitechat-header">\n        <div class="sitechat-header-icon">\n          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">\n            <path d="M12 2L2 7l10 5 10-5-10-5z"/>\n            <path d="M2 17l10 5 10-5"/>\n            <path d="M2 12l10 5 10-5"/>\n          </svg>\n        </div>\n        <div class="sitechat-header-text">\n          <h3>' + config.title + '</h3>\n          <p>' + escapeHtml(config.agentCaption) + '</p>\n        </div>\n        <div class="sitechat-header-actions" style="display:flex;align-items:center;gap:8px;flex-shrink:0;">\n          <button type="button" class="sitechat-handoff-btn" title="Talk to a live agent" data-state="idle" style="display:none">\n            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">\n              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>\n              <circle cx="9" cy="7" r="4"/>\n              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>\n              <path d="M16 3.13a4 4 0 0 1 0 7.75"/>\n            </svg>\n            <span class="sitechat-live-agent-label">Live agent</span>\n          </button>\n          <button type="button" class="sitechat-header-close sitechat-close-btn" aria-label="Close chat">\n            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">\n              <line x1="18" y1="6" x2="6" y2="18"/>\n              <line x1="6" y1="6" x2="18" y2="18"/>\n            </svg>\n          </button>\n        </div>\n      </div>\n      \n      <div class="sitechat-messages">\n        <div class="sitechat-welcome">\n          <div class="sitechat-welcome-icon">\n            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">\n              <path d="M12 2L2 7l10 5 10-5-10-5z"/>\n              <path d="M2 17l10 5 10-5"/>\n              <path d="M2 12l10 5 10-5"/>\n            </svg>\n          </div>\n          <h4>Hi there! 👋</h4>\n          <p>I\'m your AI assistant. Ask me anything about this website.</p>\n          <div class="sitechat-welcome-suggestions"></div>\n        </div>\n      </div>\n      \n      <div class="sitechat-help-panel" hidden>\n        <div class="sitechat-help-top">\n          <a class="sitechat-help-portal-link" href="#" target="_blank" rel="noopener noreferrer">Open Help Center <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>\n        </div>\n        <div class="sitechat-help-search">\n          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>\n          <input type="text" class="sitechat-help-search-input" placeholder="Search for help...">\n        </div>\n        <div class="sitechat-help-content"></div>\n      </div>\n      \n      <div class="sitechat-input-wrapper">\n        <form class="sitechat-input-form">\n          <input type="text" class="sitechat-input" placeholder="Type your message..." autocomplete="off">\n          <button type="submit" class="sitechat-send" disabled>\n            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">\n              <line x1="22" y1="2" x2="11" y2="13"/>\n              <polygon points="22 2 15 22 11 13 2 9 22 2"/>\n            </svg>\n          </button>\n        </form>\n      </div>\n      \n      <div class="sitechat-window-nav" hidden>\n        <button type="button" class="sitechat-nav-btn active" data-nav="chat">\n          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2v10z"/></svg>\n          <span>Conversation</span>\n        </button>\n        <button type="button" class="sitechat-nav-btn" data-nav="help">\n          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>\n          <span class="sitechat-nav-help-label">Help</span>\n        </button>\n      </div>\n      \n      <div class="sitechat-branding">\n        <a href="'+ config.apiUrl +'" target="_blank" rel="noopener noreferrer">\n          Powered by <strong>SwiftChat</strong>\n        </a>\n      </div>\n    </div>\n  ', 
   document["body"]["appendChild"](widgetRoot), injectResponsiveStyles(), injectDynamicThemeStyles(), applyLauncherVariant(), applyAgentProfile(), syncHeaderAndWelcomeText(), updateBrandingFooter();
   const toggleBtn = widgetRoot["querySelector"](".sitechat-toggle"),
     windowEl = widgetRoot["querySelector"](".sitechat-window"),
@@ -2177,6 +2218,7 @@
         const M = await L["json"]();
         typingRow["remove"]();
         appendMessage(M["answer"] || M["response"] || "No response", "bot", M["sources"], M["products"]);
+        Array["isArray"](M["cart_actions"]) && M["cart_actions"]["length"] && runCartActions(M["cart_actions"]);
         M["suggest_handoff"] && showHandoffSuggestion(M["handoff_reason"]);
         appendPostReplyPrompts();
         return;
@@ -2346,7 +2388,7 @@
         const cartBtn = document["createElement"]("button");
         cartBtn["type"] = "button", cartBtn["className"] = "sitechat-product-btn primary";
         cartBtn["textContent"] = J["cart_label"] || "Add to cart";
-        cartBtn["addEventListener"]("click", () => window["open"](J["cart_url"], "_blank", "noopener,noreferrer"));
+        cartBtn["addEventListener"]("click", () => addToCartFromCard(J, cartBtn));
         const viewBtn = document["createElement"]("button");
         viewBtn["type"] = "button", viewBtn["className"] = "sitechat-product-btn";
         viewBtn["textContent"] = "View";
@@ -2359,6 +2401,90 @@
         console["warn"]("SwiftChat skipped a product card:", cardErr);
       }
     }), H["appendChild"](I);
+  }
+  // Strip agent cart markers ([[cart:{...}]]) — a safety net for streamed text;
+  // the API already removes them from non-streamed answers.
+  function stripCartMarkers(G) {
+    return (G || "")["replace"](/\[\[\s*cart\s*:[\s\S]*?\]\]\s*/gim, " ");
+  }
+  // Silently add a product to the shop cart. Prefers a native addToCart(vid, qty)
+  // global when the host page exposes one (e.g. custom shops); otherwise GETs the
+  // deep-link cart_url same-origin; falls back to opening it in a new tab.
+  function performCartAdd(J, qty, done) {
+    qty = Math["max"](1, parseInt(qty, 10) || 1);
+    const pid = J && J["product_id"];
+    if (typeof window["addToCart"] === "function" && pid != null && /^\d+$/["test"](String(pid))) {
+      try {
+        const R = window["addToCart"](Number(pid), qty);
+        if (R && typeof R["then"] === "function") {
+          R["then"](() => done && done(true))["catch"](() => done && done(false));
+        } else {
+          done && done(true);
+        }
+        return;
+      } catch (e) {}
+    }
+    const url = J && J["cart_url"];
+    if (url) {
+      try {
+        const u = new URL(url, location["href"]);
+        if (u["origin"] === location["origin"]) {
+          fetch(u["href"], { credentials: "include", headers: { "X-Requested-With": "XMLHttpRequest" } })
+            ["then"](R => done && done(!!R["ok"]))
+            ["catch"](() => done && done(false));
+          return;
+        }
+      } catch (e) {}
+    }
+    done && done(false);
+  }
+  // After a silent add: let the host shop refresh/open its own cart UI when it
+  // exposes hooks, and emit an event shops can listen to.
+  function notifyCartAdded(J) {
+    try { typeof window["refreshCart"] === "function" && window["refreshCart"](); } catch (e) {}
+    try { typeof window["openCart"] === "function" && window["openCart"](); } catch (e) {}
+    try { window["dispatchEvent"](new CustomEvent("sitechat:cart-add", { detail: J || {} })); } catch (e) {}
+  }
+  function addToCartFromCard(J, btn) {
+    const orig = btn["textContent"];
+    btn["disabled"] = true, btn["textContent"] = "…";
+    performCartAdd(J, 1, ok => {
+      if (ok) {
+        notifyCartAdded(J);
+        btn["classList"]["add"]("added"), btn["textContent"] = "✓ Added";
+        setTimeout(() => {
+          btn["disabled"] = false, btn["classList"]["remove"]("added"), btn["textContent"] = orig;
+        }, 2400);
+      } else {
+        btn["disabled"] = false, btn["textContent"] = orig;
+        J["cart_url"] && window["open"](J["cart_url"], "_blank", "noopener,noreferrer");
+      }
+    });
+  }
+  // Agent-issued actions: add each item silently, then show a summary card.
+  function runCartActions(G) {
+    const results = [];
+    let pending = G["length"];
+    G["forEach"](A => performCartAdd(A, A["qty"], ok => {
+      results["push"]({ action: A, ok: ok });
+      if (--pending === 0) {
+        const added = results["filter"](R => R["ok"]);
+        added["length"] && notifyCartAdded(added[0]["action"]);
+        renderCartConfirm(results);
+      }
+    }));
+  }
+  function renderCartConfirm(G) {
+    const H = document["createElement"]("div");
+    H["className"] = "sitechat-cart-confirm";
+    H["innerHTML"] = '<div class="sitechat-cart-confirm-title">Cart</div>' + G["map"](R => {
+      const A = R["action"], qty = A["qty"] > 1 ? " ×" + A["qty"] : "";
+      return '<div class="sitechat-cart-confirm-line ' + (R["ok"] ? "ok" : "fail") + '">' +
+        (R["ok"] ? "✓ " : "✕ ") + escapeHtml((A["name"] || "Item") + qty) +
+        (R["ok"] ? "" : (A["cart_url"] ? ' <a href="' + escapeHtml(A["cart_url"]) + '" target="_blank" rel="noopener noreferrer">add manually</a>' : "")) +
+        "</div>";
+    })["join"]("");
+    messagesEl["appendChild"](H), messagesEl["scrollTop"] = messagesEl["scrollHeight"];
   }
   function appendMessage(G, H, I = [], products = []) {
     lastMessageIndex++;
@@ -2374,7 +2500,7 @@
     const N = document["createElement"]("div");
     N["className"] = "sitechat-message " + H;
     let O = G;
-    H === "bot" && (O = markdownToHtml(G));
+    H === "bot" && (O = markdownToHtml(stripCartMarkers(G)));
     let P = O;
     config.showSources && I && I["length"] > 0 && (P += '\n        <div class="sitechat-sources">\n          <div class="sitechat-sources-label">\n            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">\n              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>\n              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>\n            </svg>\n            Sources\n          </div>\n          <div class="sitechat-sources-list">\n            ' + I["map"](R => '\n              <a href="' + R["url"] + '" target="_blank" class="sitechat-source-link" title="' + R["url"] + '">\n                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">\n                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>\n                  <polyline points="15 3 21 3 21 9"/>\n                  <line x1="10" y1="14" x2="21" y2="3"/>\n                </svg>\n                ' + (R["title"] || "Source") + "\n              </a>\n            ")["join"]("") + "\n          </div>\n        </div>\n      ");
     N["innerHTML"] = P, M["appendChild"](N);

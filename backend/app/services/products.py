@@ -293,7 +293,7 @@ GENERIC_WORDS = {"t", "shirt", "tshirt", "t shirt", "tee", "top", "hat", "cap", 
                  "branco", "branca", "black", "white", "size", "pack", "new", "novo", "nova", "edition", "classic"}
 
 
-def catalog_prompt(products: List[Dict], limit: int = 40) -> str:
+def catalog_prompt(products: List[Dict], limit: int = 40, cart_enabled: bool = False) -> str:
     """System-prompt addendum listing exact product names so the model uses them verbatim."""
     if not products:
         return ""
@@ -301,8 +301,93 @@ def catalog_prompt(products: List[Dict], limit: int = 40) -> str:
     for p in products[:limit]:
         price = f" — {p['price']} {p.get('currency') or ''}".rstrip() if p.get("price") else ""
         lines.append(f"- {p['name']}{price}")
-    return ("\n\nShop catalog (when you mention or recommend a product, use its EXACT name as written here "
-            "so it can be shown as a product card):\n" + "\n".join(lines))
+    prompt = ("\n\nShop catalog (when you mention or recommend a product, use its EXACT name as written here "
+              "so it can be shown as a product card):\n" + "\n".join(lines))
+    if cart_enabled:
+        prompt += (
+            "\n\nCart actions: when the shopper explicitly asks you to add one or more products to their "
+            "cart, confirm briefly in their language and append ONE machine-readable line at the very end "
+            "of your reply, using the EXACT catalog names:\n"
+            '[[cart:{"items":[{"name":"Exact Product Name","qty":1}]}]]\n'
+            "Emit it only when the user clearly wants the item(s) added — never for questions, "
+            "comparisons or recommendations."
+        )
+    return prompt
+
+
+def cart_actions_enabled(behavior: Dict) -> bool:
+    """Whether the shop can actually accept add-to-cart links (template or known platform)."""
+    behavior = behavior or {}
+    if (behavior.get("shop_platform") or "auto") == "none":
+        return False
+    if (behavior.get("cart_url_template") or "").strip():
+        return True
+    return (behavior.get("shop_platform") or "auto") in ("woocommerce", "shopify")
+
+
+CART_ACTION_RE = re.compile(r"\[\[\s*cart\s*:\s*(\{.*?\})\s*\]\]", re.I | re.S)
+
+
+def parse_cart_actions(answer: str) -> tuple:
+    """Split ``[[cart:{...}]]`` markers out of an LLM answer.
+
+    Returns ``(clean_answer, specs)`` where specs is ``[{"name": str, "qty": int}]``.
+    Malformed markers are removed too so they never leak to the visitor.
+    """
+    specs: List[Dict] = []
+    if not answer:
+        return answer or "", specs
+
+    def _collect(match) -> str:
+        try:
+            data = json.loads(match.group(1))
+        except Exception:
+            return " "
+        items = data.get("items") if isinstance(data, dict) else None
+        for item in items or []:
+            if not isinstance(item, dict):
+                continue
+            name = (item.get("name") or item.get("product") or "").strip()
+            if not name:
+                continue
+            try:
+                qty = int(item.get("qty") or item.get("quantity") or 1)
+            except (TypeError, ValueError):
+                qty = 1
+            specs.append({"name": name[:160], "qty": max(1, min(10, qty))})
+        return " "
+
+    clean = CART_ACTION_RE.sub(_collect, answer)
+    # Drop malformed/unterminated leftovers so they never reach the visitor.
+    clean = re.sub(r"\[\[\s*cart\s*:[^\]]*\]?", " ", clean)
+    clean = re.sub(r"[ \t]+(\n|$)", r"\1", clean).strip()
+    return clean, specs
+
+
+def resolve_cart_actions(specs: List[Dict], products: List[Dict], limit: int = 6) -> List[Dict]:
+    """Attach each agent cart spec to a catalog product (exact → fuzzy name match).
+
+    Returns [{"product": <catalog dict>, "qty": int}]; unresolved specs are dropped.
+    """
+    resolved = []
+    for spec in specs[:limit]:
+        target = _norm(spec.get("name") or "")
+        if not target:
+            continue
+        product = next((p for p in products if _norm(p.get("name") or "") == target), None)
+        if product is None:
+            cands = [
+                p for p in products
+                if (n := _norm(p.get("name") or "")) and (n in target or (len(target) >= 10 and target in n))
+            ]
+            product = max(cands, key=lambda p: len(_norm(p.get("name") or "")), default=None)
+        if product is None:
+            hits = match_products(spec.get("name") or "", products, limit=1)
+            product = hits[0] if hits else None
+        if product is None:
+            continue
+        resolved.append({"product": product, "qty": spec.get("qty") or 1})
+    return resolved
 
 
 def match_products(answer: str, products: List[Dict], limit: int = 4) -> List[Dict]:
@@ -375,13 +460,14 @@ CART_TEMPLATES = {
 }
 
 
-def build_cart_url(behavior: Dict, product: Dict, site_url: str) -> Optional[str]:
+def build_cart_url(behavior: Dict, product: Dict, site_url: str, qty: int = 1) -> Optional[str]:
     """Add-to-cart deep link for a matched product, or None when not possible.
 
     behavior.shop_platform: auto | woocommerce | shopify | custom | none
-    custom uses behavior.cart_url_template with {id} {url} {eurl} {base} {name}
+    custom uses behavior.cart_url_template with {id} {qty} {url} {eurl} {base} {name}
     placeholders — {url} is the raw product URL, {eurl} the URL-encoded value
-    (for templates that carry it as a query param).
+    (for templates that carry it as a query param). Templates that hardcode
+    ``qty=1`` get it patched to the requested quantity.
     """
     platform = (behavior.get("shop_platform") or "auto")
     if platform == "none":
@@ -396,10 +482,15 @@ def build_cart_url(behavior: Dict, product: Dict, site_url: str) -> Optional[str
     pid = product.get("product_id") or product.get("variant_id")
     if "{id}" in tpl and not pid:
         return None
+    qty = max(1, int(qty or 1))
     parsed = urlparse(site_url or "")
     base = f"{parsed.scheme}://{parsed.netloc}" if parsed.netloc else ""
-    return (tpl.replace("{id}", quote(str(pid or ""), safe=""))
-               .replace("{eurl}", quote(product.get("url") or "", safe=""))
-               .replace("{url}", product.get("url") or "")
-               .replace("{base}", base)
-               .replace("{name}", quote(str(product.get("name") or ""), safe="")))
+    url = (tpl.replace("{id}", quote(str(pid or ""), safe=""))
+              .replace("{qty}", str(qty))
+              .replace("{eurl}", quote(product.get("url") or "", safe=""))
+              .replace("{url}", product.get("url") or "")
+              .replace("{base}", base)
+              .replace("{name}", quote(str(product.get("name") or ""), safe="")))
+    if qty != 1 and "{qty}" not in tpl:
+        url = re.sub(r"([?&]qty=)\d+", rf"\g<1>{qty}", url)
+    return url

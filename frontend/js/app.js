@@ -1838,6 +1838,7 @@ function getAppearanceTabContent() {
         { value: 'text_button', label: 'Text Button', icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="8" width="20" height="8" rx="4"/><path d="M6 12h6"/></svg>' },
         { value: 'agent_profile', label: 'Agent Profile', icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/></svg>' },
         { value: 'quick_input', label: 'Quick Input', icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="8" width="20" height="8" rx="4"/><path d="M18 9.5l-3 3M18 12.5h-4"/></svg>' },
+        { value: 'float_button', label: 'Side Panel', icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="11" y="3" width="10" height="18" rx="2"/><circle cx="6" cy="18" r="3"/></svg>' },
     ];
     const launcherStyle = a.launcher_style || 'button';
     const fonts = ['Inter', 'Roboto', 'Open Sans', 'Lato', 'Montserrat', 'Poppins', 'System'];
@@ -2242,7 +2243,7 @@ function getBehaviorTabContent() {
             <div class="form-group" id="cart-template-group" style="display:${behavior.shop_platform === 'custom' ? '' : 'none'}">
                 <label for="config-cart-template">Cart URL Template</label>
                 <input type="text" id="config-cart-template" placeholder="{base}/cart?add={id}" value="${escapeHtml(behavior.cart_url_template || '')}" class="form-input">
-                <small class="form-help">Placeholders: {id} product ID, {url} product URL (raw), {eurl} URL-encoded product URL, {base} site origin, {name} product name</small>
+                <small class="form-help">Placeholders: {id} product ID, {qty} requested quantity, {url} product URL (raw), {eurl} URL-encoded product URL, {base} site origin, {name} product name</small>
             </div>
             <div class="form-group">
                 <label for="config-cart-label">Add-to-cart Button Label</label>
