@@ -1,3 +1,5 @@
+from bs4 import BeautifulSoup
+
 from app.services.products import (
     build_cart_url,
     cart_actions_enabled,
@@ -5,6 +7,7 @@ from app.services.products import (
     parse_cart_actions,
     resolve_cart_actions,
     _norm,
+    _product_id,
 )
 
 
@@ -84,3 +87,34 @@ def test_cart_actions_enabled():
     assert cart_actions_enabled({"shop_platform": "woocommerce"})
     assert not cart_actions_enabled({"shop_platform": "none"})
     assert not cart_actions_enabled({"shop_platform": "auto"})
+
+
+def _pid(html, url="https://shop.example/produto/x"):
+    return _product_id(BeautifulSoup(html, "html.parser"), url)
+
+
+def test_product_id_pdp_variant_global():
+    # Custom shops expose the default variant as a JS global on the PDP.
+    html = "<html><body><script>var PDP_VARIANT = 9;</script></body></html>"
+    assert _pid(html) == "9"
+
+
+def test_product_id_variant_radios():
+    html = ('<div id="pdp-variants">'
+            '<input type="radio" value="11"><input type="radio" value="12" checked>'
+            '</div>')
+    assert _pid(html) == "12"
+
+
+def test_product_id_variant_input_names():
+    assert _pid('<input name="variant_id" value="77">') == "77"
+    assert _pid('<input name="vid" value="88">') == "88"
+
+
+def test_product_id_data_variant_attrs():
+    assert _pid('<button data-variant-id="55">buy</button>') == "55"
+    assert _pid('<div data-vid="66"></div>') == "66"
+
+
+def test_product_id_none_on_plain_page():
+    assert _pid("<html><body><h1>Hello</h1></body></html>") is None

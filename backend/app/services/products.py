@@ -98,6 +98,23 @@ def _product_id(soup, url: str) -> Optional[str]:
         m = re.search(r"postid-(\d+)", " ".join(body.get("class") or []))
         if m:
             return m.group(1)
+    # Custom shops: explicit current-variant globals (e.g. `var PDP_VARIANT = 9;`)
+    for script in soup.find_all("script"):
+        m = re.search(r"\bPDP_VARIANT\s*=\s*['\"]?(\w{1,32})", script.string or script.get_text() or "")
+        if m:
+            return m.group(1)
+    # Variant selectors carrying per-variant ids (checked option wins)
+    inp = (soup.select_one("input[name='variant_id'][checked][value], #pdp-variants input[checked][value]")
+           or soup.select_one("input[name='variant_id'][value], input[name='variantId'][value], "
+                              "input[name='vid'][value], input[name='variant'][value], "
+                              "#pdp-variants input[value]"))
+    if inp and (inp.get("value") or "").strip():
+        return str(inp["value"]).strip()
+    el = soup.select_one("[data-variant-id], [data-vid]")
+    if el:
+        v = (el.get("data-variant-id") or el.get("data-vid") or "").strip()
+        if v:
+            return v
     return _pid_from_url(url)
 
 
