@@ -192,6 +192,47 @@
   let sessionId = resolveSessionId();
   let conversationStarted = false;
 
+  // Re-render the stored transcript for a persisted session so a reload or a
+  // second tab on the same browser doesn't look like a fresh chat.
+  // `historyReady` lets the submit path wait for the restore before
+  // appending, keeping message order intact.
+  let historyRestored = false;
+  let restoringHistory = false;
+  let historyReady = Promise["resolve"]();
+  function restoreHistory() {
+    if (historyRestored || config["previewMode"]) return;
+    historyRestored = true;
+    historyReady = (async () => {
+      try {
+        const res = await Promise["race"]([
+          fetch(config.apiUrl + "/api/chat/history/" + encodeURIComponent(sessionId)),
+          sleepMs(8000)["then"](() => null),
+        ]);
+        if (!res || !res["ok"]) return;
+        const data = await res["json"]();
+        const msgs = data && Array["isArray"](data["messages"]) ? data["messages"] : [];
+        if (!msgs["length"]) return;
+        restoringHistory = true;
+        try {
+          msgs["forEach"](m => appendMessage(
+            m["content"] || "",
+            m["role"] === "user" ? "user" : "bot",
+            Array["isArray"](m["sources"]) ? m["sources"] : []
+          ));
+        } finally {
+          restoringHistory = false;
+        }
+        conversationStarted = true;
+        if (!welcomeRemoved) {
+          const w = messagesEl["querySelector"](".sitechat-welcome");
+          w && w["remove"]();
+          welcomeRemoved = true;
+        }
+      } catch (e) {}
+    })();
+  }
+  restoreHistory();
+
   const handoffState = {
     mode: "ai",
     handoffId: null,
@@ -2270,6 +2311,9 @@
     const H = inputEl["value"]["trim"]();
     if (!H) return;
     inputEl["value"] = "", sendBtn["disabled"] = true;
+    // Let any in-flight history restore finish first so the new message
+    // always appends after the restored transcript.
+    await historyReady;
     if (!welcomeRemoved) {
       const J = messagesEl["querySelector"](".sitechat-welcome");
       if (J) J["remove"]();
@@ -2687,8 +2731,8 @@
   }
   function appendMessage(G, H, I = [], products = []) {
     lastMessageIndex++;
-    H === "bot" && playSound(config.soundAgentMessage);
-    H === "bot" && !chatOpen && bumpUnread();
+    !restoringHistory && H === "bot" && playSound(config.soundAgentMessage);
+    !restoringHistory && H === "bot" && !chatOpen && bumpUnread();
     const msgIndex = lastMessageIndex, K = document["createElement"]("div");
     K["className"] = "sitechat-message-wrapper " + H;
     const L = document["createElement"]("div");
