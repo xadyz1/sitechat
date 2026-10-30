@@ -27,6 +27,17 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script>
+    // Apply the saved/system theme before first paint so dark mode has no flash.
+    (function () {
+      var t = null;
+      try { t = localStorage.getItem('sc_theme'); } catch (e) {}
+      if (t !== 'dark' && t !== 'light') {
+        t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+      }
+      document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
   <link rel="stylesheet" href="/css/landing.css?v=20260403-2">
   <!-- Local dev: optional override if the API is not the same origin as this page (e.g. page on :3000, API on :8000). -->
   <!-- <meta name="sitechat-api-origin" content="http://127.0.0.1:8000"> -->
@@ -982,6 +993,40 @@ __WIDGET_SRI_JS__
         window.addEventListener('resize', function () { if (!window.matchMedia('(max-width: 899px)').matches) closeNav(); });
         document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeNav(); });
       }
+
+      // Theme toggle (light ⇄ dark) — one button in the desktop CTA group,
+      // one next to the mobile hamburger, both kept in sync via data-theme.
+      var MOON_SVG = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"/></svg>';
+      var SUN_SVG = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="4.9" y1="4.9" x2="6.3" y2="6.3"/><line x1="17.7" y1="17.7" x2="19.1" y2="19.1"/><line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/><line x1="4.9" y1="19.1" x2="6.3" y2="17.7"/><line x1="17.7" y1="6.3" x2="19.1" y2="4.9"/></svg>';
+      function isDark() { return document.documentElement.getAttribute('data-theme') === 'dark'; }
+      function syncThemeToggles() {
+        var dark = isDark();
+        document.querySelectorAll('.theme-toggle').forEach(function (b) {
+          b.setAttribute('aria-pressed', String(dark));
+          b.title = dark ? 'Switch to light mode' : 'Switch to dark mode';
+        });
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute('content', dark ? '#0a1023' : '#0B1129');
+      }
+      function makeThemeToggle(cls) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'theme-toggle ' + cls;
+        b.setAttribute('aria-label', 'Toggle dark mode');
+        b.innerHTML = '<span class="tt-icon tt-moon">' + MOON_SVG + '</span><span class="tt-icon tt-sun">' + SUN_SVG + '</span>';
+        b.addEventListener('click', function () {
+          var t = isDark() ? 'light' : 'dark';
+          document.documentElement.setAttribute('data-theme', t);
+          try { localStorage.setItem('sc_theme', t); } catch (e) {}
+          syncThemeToggles();
+        });
+        return b;
+      }
+      var navCta = document.querySelector('.landing-nav-cta');
+      if (navCta) navCta.insertBefore(makeThemeToggle('tt-desktop'), navCta.firstChild);
+      var navToggle = document.getElementById('nav-toggle');
+      if (navToggle && navToggle.parentNode) navToggle.parentNode.insertBefore(makeThemeToggle('tt-mobile'), navToggle);
+      syncThemeToggles();
 
       // Scrolled header
       var header = document.querySelector('.landing-header');

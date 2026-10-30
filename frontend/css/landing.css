@@ -440,7 +440,8 @@ body.landing-nav-open .landing-header {
     gap: 0;
     box-shadow: -12px 0 48px rgba(0, 0, 0, 0.08);
     transform: translateX(100%);
-    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    visibility: hidden;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), visibility 0s 0.3s;
     z-index: 210;
     max-height: 100dvh;
     overflow-y: auto;
@@ -454,7 +455,11 @@ body.landing-nav-open .landing-header {
     gap: 0;
   }
 
-  .landing-nav-links.is-open { transform: translateX(0); }
+  .landing-nav-links.is-open {
+    transform: translateX(0);
+    visibility: visible;
+    transition-delay: 0s;
+  }
 
   .landing-nav-primary > a:not(.btn),
   .landing-nav-primary .landing-nav-github {
@@ -491,6 +496,9 @@ body.landing-nav-open .landing-header {
 /* ——— Hero ——— */
 .landing-hero {
   padding: clamp(2.5rem, 6vw, 4rem) 0 clamp(3rem, 8vw, 5rem);
+  /* The decorative .landing-hero-glow bleeds past the viewport edge —
+     clip it here so it can't widen the page on small screens. */
+  overflow: hidden;
 }
 
 .landing-hero-grid {
@@ -3242,3 +3250,163 @@ html[lang="pt-PT"] .lt-pt, html[lang="pt"] .lt-pt { display: inline-block; }
 @media (max-width: 860px) {
     .lang-toggle.lt-mobile { display: inline-flex; margin-right: 10px; }
 }
+
+/* Theme toggle (light ⇄ dark) — same footprint/visibility rules as .lang-toggle */
+.theme-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--ink);
+    cursor: pointer;
+    transition: background .2s ease, border-color .2s ease, color .2s ease;
+}
+.theme-toggle:hover { background: rgba(123, 61, 251, 0.08); border-color: rgba(123, 61, 251, 0.35); }
+.theme-toggle .tt-icon { display: none; line-height: 0; }
+html:not([data-theme="dark"]) .theme-toggle .tt-moon { display: inline-block; }
+html[data-theme="dark"] .theme-toggle .tt-sun { display: inline-block; }
+.theme-toggle.tt-desktop { display: none; }
+@media (min-width: 861px) {
+    .theme-toggle.tt-mobile { display: none; }
+    .theme-toggle.tt-desktop { display: inline-flex; margin-right: 4px; }
+}
+@media (max-width: 860px) {
+    .theme-toggle.tt-mobile { display: inline-flex; margin-right: 10px; }
+}
+
+/* ——— Mobile: comparison table fits the viewport instead of scrolling ——— */
+@media (max-width: 640px) {
+  .landing-compare-table {
+    min-width: 0;
+    table-layout: fixed;
+    font-size: 0.78rem;
+  }
+
+  .landing-compare-table th,
+  .landing-compare-table td {
+    padding: 0.75rem 0.6rem;
+    overflow-wrap: break-word;
+  }
+
+  .landing-compare-table thead th { font-size: 0.66rem; }
+  .landing-compare-badge { margin-left: 0.25rem; padding: 0.1rem 0.3rem; }
+}
+
+/* ===================== Dark theme ===================== */
+html[data-theme="dark"] body.landing { color-scheme: dark; }
+
+html[data-theme="dark"] .landing {
+  --ink: #e8ecf7;
+  --ink-soft: #b8c0d8;
+  --muted: #8e97b3;
+  --line: rgba(230, 236, 250, 0.12);
+  --surface: #131b38;
+  --surface-2: #0a1023;
+  --glow: rgba(123, 61, 251, 0.25);
+}
+
+/* Ambient background — same purples, a bit stronger against the dark base */
+html[data-theme="dark"] .landing-bg {
+  background:
+    radial-gradient(ellipse 100% 80% at 10% -30%, rgba(155, 107, 252, 0.22), transparent 50%),
+    radial-gradient(ellipse 80% 60% at 90% 10%, rgba(236, 29, 201, 0.16), transparent 45%),
+    radial-gradient(ellipse 60% 50% at 50% 100%, rgba(123, 61, 251, 0.12), transparent 50%);
+}
+
+html[data-theme="dark"] .landing-grid-bg {
+  background-image:
+    linear-gradient(rgba(230, 236, 250, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(230, 236, 250, 0.05) 1px, transparent 1px);
+}
+
+html[data-theme="dark"] .landing-header--scrolled {
+  background: rgba(10, 16, 35, 0.82);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset;
+}
+
+html[data-theme="dark"] .landing .btn-ghost:hover { background: rgba(230, 236, 250, 0.08); }
+html[data-theme="dark"] .landing .btn-outline { box-shadow: none; }
+html[data-theme="dark"] .landing-nav-overlay { background: rgba(3, 5, 12, 0.6); }
+
+/* Hero browser mockup */
+html[data-theme="dark"] .landing-browser,
+html[data-theme="dark"] .landing-hero-visual-wrap:hover .landing-browser {
+  box-shadow:
+    0 32px 64px -24px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+}
+html[data-theme="dark"] .landing-browser-chrome { background: linear-gradient(180deg, #1a2344, #141c3a); }
+html[data-theme="dark"] .landing-browser-dots i { background: #35406e; }
+html[data-theme="dark"] .landing-browser-page { background: linear-gradient(180deg, #121a37, #0f1630); }
+html[data-theme="dark"] .landing-skel { background: linear-gradient(90deg, #242f5c, #303d75, #242f5c); background-size: 200% 100%; }
+html[data-theme="dark"] .landing-chat-bubble.bot { background: #1d2749; }
+html[data-theme="dark"] .landing-chat-typing { background: #1d2749; }
+html[data-theme="dark"] .landing-chat-input-row { background: var(--surface); }
+html[data-theme="dark"] .landing-chat-input { background: #0e1531; }
+html[data-theme="dark"] .landing-chat-input:focus { background: #131c3f; }
+
+html[data-theme="dark"] .landing-trust { background: rgba(255, 255, 255, 0.03); }
+
+/* Shimmer section titles — light gradient for the dark base */
+html[data-theme="dark"] .landing-hero-title,
+html[data-theme="dark"] .landing-section-title,
+html[data-theme="dark"] .landing-pain-label {
+  background: linear-gradient(90deg, #f2f5ff 0%, #f2f5ff 35%, #79839f 50%, #f2f5ff 65%, #f2f5ff 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: landingTitleLoop 7s linear infinite;
+}
+
+html[data-theme="dark"] .landing-ad-slot { background: rgba(255, 255, 255, 0.04); }
+
+html[data-theme="dark"] .landing-bento-featured {
+  background: linear-gradient(155deg, #12332a 0%, #241b52 30%, #131b38 70%);
+}
+
+/* Sections that intentionally stay dark (they used --ink as a dark fill) */
+html[data-theme="dark"] .landing-code { background: #0c1222; }
+html[data-theme="dark"] .landing-dark { background: linear-gradient(180deg, #0d1328 0%, #0a0f20 100%); }
+
+html[data-theme="dark"] .landing-compare { box-shadow: 0 4px 24px -8px rgba(0, 0, 0, 0.4); }
+html[data-theme="dark"] .cmp-no { color: #a2abc5; }
+
+/* Demo site frame */
+html[data-theme="dark"] .landing-demo-frame { box-shadow: 0 24px 64px -24px rgba(0, 0, 0, 0.5); }
+html[data-theme="dark"] .landing-demo-site-bar { background: linear-gradient(180deg, #1a2344, #141c3a); }
+html[data-theme="dark"] .landing-demo-site-body { background: linear-gradient(160deg, #141c3a, #101735); }
+
+/* How-it-works visuals */
+html[data-theme="dark"] .landing-hiw-step-visual {
+  background: #131b38;
+  box-shadow: 0 4px 32px rgba(123, 61, 251, 0.14), 0 1px 6px rgba(0, 0, 0, 0.4);
+}
+html[data-theme="dark"] .hiw-visual-label { background: #161f42; }
+html[data-theme="dark"] .hiw-crawl-footer { background: #161f42; }
+html[data-theme="dark"] .hiw-crawl-url { color: #a5aec6; }
+html[data-theme="dark"] .hiw-crawl-footer > span:first-child { color: #a5aec6; }
+html[data-theme="dark"] .hiw-crawl-dot.pending { background: #3a456e; }
+html[data-theme="dark"] .hiw-review-q { color: #c2c9dd; }
+
+/* Pricing */
+html[data-theme="dark"] .pricing-card { box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35); }
+html[data-theme="dark"] .pricing-card--featured {
+  background: linear-gradient(160deg, #20295a, #141c3f);
+  border-color: #33408a;
+  color: #f1f5f9;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
+}
+html[data-theme="dark"] .pricing-btn--light { background: rgba(230, 236, 250, 0.08); }
+html[data-theme="dark"] .pricing-btn--light:hover { background: rgba(230, 236, 250, 0.13); }
+
+/* Demo modal */
+html[data-theme="dark"] .demo-modal-backdrop { background: rgba(3, 5, 12, 0.65); }
+html[data-theme="dark"] .demo-modal-card { box-shadow: 0 32px 80px rgba(0, 0, 0, 0.6); }
+html[data-theme="dark"] .demo-modal-close { background: rgba(230, 236, 250, 0.08); }
+html[data-theme="dark"] .demo-modal-close:hover { background: rgba(230, 236, 250, 0.14); }
