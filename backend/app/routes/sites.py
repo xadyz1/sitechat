@@ -177,24 +177,21 @@ async def update_site_config(
         raise HTTPException(status_code=403, detail="Access denied")
     
     current_config = site.get("config", {})
-    
+
+    # Merge each sent section key-by-key over the stored one instead of
+    # replacing it: a partial payload (e.g. brand-apply sending only two
+    # appearance fields) must not reset the rest of the section to defaults.
     update_data = {}
-    if config.appearance is not None:
-        update_data["config.appearance"] = config.appearance.model_dump()
-    if config.behavior is not None:
-        update_data["config.behavior"] = config.behavior.model_dump()
-    if config.lead_capture is not None:
-        update_data["config.lead_capture"] = config.lead_capture.model_dump()
-    if config.security is not None:
-        update_data["config.security"] = config.security.model_dump()
-    if config.quick_prompts is not None:
-        update_data["config.quick_prompts"] = config.quick_prompts.model_dump()
-    if config.help_center is not None:
-        update_data["config.help_center"] = config.help_center.model_dump()
-    if config.visibility is not None:
-        update_data["config.visibility"] = config.visibility.model_dump()
-    if config.session is not None:
-        update_data["config.session"] = config.session.model_dump()
+    for name in ("appearance", "behavior", "lead_capture", "security",
+                 "quick_prompts", "help_center", "visibility", "session"):
+        section = getattr(config, name)
+        if section is None:
+            continue
+        sent = section.model_dump(exclude_unset=True)
+        if not sent:
+            continue
+        stored = current_config.get(name) or {}
+        update_data[f"config.{name}"] = {**stored, **sent}
     
     if update_data:
         # For provider interface, flatten update_data for update_site method

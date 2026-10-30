@@ -47,9 +47,11 @@ async def check_handoff_suggestion(site_id: str, answer: str, confidence: float)
     return False, None
 
 
-async def _products_for_answer(mongodb, site_id: str, answer: str) -> list:
+async def _products_for_answer(mongodb, site_id: str, answer: str, hints: list = None) -> list:
     """Shop products (from the crawl catalog) whose names appear in the answer."""
-    from app.services.products import build_cart_url, enrich_matches, match_products, site_domain
+    from app.services.products import (
+        _norm, build_cart_url, enrich_matches, match_products, resolve_cart_actions, site_domain,
+    )
     site = await mongodb.db.sites.find_one({"site_id": site_id}, {"url": 1, "config": 1})
     if not site:
         return []
@@ -63,9 +65,21 @@ async def _products_for_answer(mongodb, site_id: str, answer: str) -> list:
         {"domain": domain},
         {"_id": 0, "name": 1, "url": 1, "image": 1, "price": 1, "currency": 1, "product_id": 1, "platform": 1}
     ).to_list(2000)
-    matched = enrich_matches(match_products(answer, products), products)
+    matched = match_products(answer, products)
+    seen = {_norm(p.get("name") or "") for p in matched}
+    # Explicit [prod:name] hints from the agent win over loose text matches.
+    hinted = []
+    for spec in resolve_cart_actions([{"name": n} for n in (hints or [])], products):
+        p = spec["product"]
+        key = _norm(p.get("name") or "")
+        if key and key not in seen:
+            seen.add(key)
+            hinted.append(p)
+    matched = enrich_matches((hinted + matched)[:4], products)
     cart_label = behavior.get("cart_button_label") or "Add to cart"
+    view_label = behavior.get("view_button_label") or "View"
     for p in matched:
+        p["view_label"] = view_label
         cart = build_cart_url(behavior, p, site.get("url") or "")
         if cart:
             p["cart_url"] = cart
@@ -115,7 +129,9 @@ async def chat(request: Request, body: ChatRequest):
 
         if body.site_id:
             try:
-                response.products = await _products_for_answer(mongodb, body.site_id, response.answer)
+                response.products = await _products_for_answer(
+                    mongodb, body.site_id, response.answer, hints=response.product_hints
+                )
             except Exception as e:
                 logger.debug(f"Product matching failed: {e}")
 

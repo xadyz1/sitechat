@@ -344,6 +344,18 @@ def cart_actions_enabled(behavior: Dict) -> bool:
 
 CART_ACTION_RE = re.compile(r"\[\[\s*cart\s*:\s*(\{.*?\})\s*\]\]", re.I | re.S)
 
+# Optional product-card hint tags site owners put in custom prompts, e.g.
+# "[prod:Exact Product Name]" on its own line → the card is injected and the
+# tag never reaches the visitor.
+PRODUCT_TAG_RE = re.compile(r"\[\s*(?:prod|product)\s*:\s*([^\]\n]+)\]", re.I)
+
+
+def extract_product_tags(answer: str) -> List[str]:
+    """Catalog names the agent embedded as ``[prod:name]`` card hints."""
+    if not answer:
+        return []
+    return [m.strip()[:160] for m in PRODUCT_TAG_RE.findall(answer) if m.strip()]
+
 
 def parse_cart_actions(answer: str) -> tuple:
     """Split ``[[cart:{...}]]`` markers out of an LLM answer.
@@ -377,6 +389,8 @@ def parse_cart_actions(answer: str) -> tuple:
     clean = CART_ACTION_RE.sub(_collect, answer)
     # Drop malformed/unterminated leftovers so they never reach the visitor.
     clean = re.sub(r"\[\[\s*cart\s*:[^\]]*\]?", " ", clean)
+    # [prod:name] card hints are resolved server-side and never shown.
+    clean = PRODUCT_TAG_RE.sub(" ", clean)
     clean = re.sub(r"[ \t]+(\n|$)", r"\1", clean).strip()
     return clean, specs
 

@@ -37,6 +37,10 @@ class ChatResponse(BaseModel):
     suggest_handoff: bool = Field(default=False, description="Whether to suggest human handoff")
     handoff_reason: Optional[str] = Field(None, description="Reason for suggesting handoff")
     products: List[Dict[str, Any]] = Field(default_factory=list, description="Shop products mentioned in the answer")
+    product_hints: List[str] = Field(
+        default_factory=list,
+        description="Internal: catalog names the agent embedded as [prod:name] tags, used to resolve product cards"
+    )
     cart_actions: List[Dict[str, Any]] = Field(
         default_factory=list,
         description="Agent-requested add-to-cart actions: {name, qty, cart_url, product_id, image, price, currency, url} — the widget executes them silently"
@@ -277,6 +281,7 @@ class SiteBehaviorConfig(BaseModel):
         description="Custom add-to-cart URL template with {id} {qty} {url} {eurl} {base} {name} placeholders (used when shop_platform=custom, or as fallback); {url}=raw product URL, {eurl}=URL-encoded"
     )
     cart_button_label: str = Field(default="Add to cart", description="Label for the add-to-cart button on product cards")
+    view_button_label: str = Field(default="View", description="Label for the view-product button/CTA on product cards")
     order_lookup_enabled: bool = Field(default=False, description="Fetch live order status when the visitor mentions an order reference")
     order_lookup_url: Optional[str] = Field(
         default=None,

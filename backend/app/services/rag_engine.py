@@ -203,7 +203,9 @@ class RAGEngine:
                 logger.info(f"Using Q&A pair response (score: {qa_score:.3f})")
                 
                 # Use Q&A pair directly
-                answer = qa_pair["answer"]
+                from app.services.products import extract_product_tags, parse_cart_actions
+                product_hints = extract_product_tags(qa_pair["answer"])
+                answer, _ = parse_cart_actions(qa_pair["answer"])
                 sources = [SourceDocument(
                     url=f"qa://{qa_pair['id']}",
                     title="Trained Q&A Response",
@@ -238,7 +240,8 @@ class RAGEngine:
                     sources=sources,
                     confidence=confidence,
                     follow_up_questions=follow_ups,
-                    session_id=session_id
+                    session_id=session_id,
+                    product_hints=product_hints
                 )
             
             # 4. No Q&A match - use prefetched retrieval or fetch now
@@ -270,7 +273,8 @@ class RAGEngine:
             )
             
             # 7b. Strip agent cart markers and resolve them into cart actions
-            from app.services.products import parse_cart_actions
+            from app.services.products import extract_product_tags, parse_cart_actions
+            product_hints = extract_product_tags(answer)
             answer, cart_specs = parse_cart_actions(answer)
             cart_actions = await self._resolve_cart_actions(mongodb, site, cart_specs)
 
@@ -301,6 +305,7 @@ class RAGEngine:
                 confidence=confidence,
                 follow_up_questions=follow_ups,
                 session_id=session_id,
+                product_hints=product_hints,
                 cart_actions=cart_actions
             )
 

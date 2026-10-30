@@ -2254,6 +2254,10 @@ function getBehaviorTabContent() {
                 <label for="config-cart-label">Add-to-cart Button Label</label>
                 <input type="text" id="config-cart-label" placeholder="Add to cart" value="${escapeHtml(behavior.cart_button_label || '')}" class="form-input">
             </div>
+            <div class="form-group">
+                <label for="config-view-label">View Button Label</label>
+                <input type="text" id="config-view-label" placeholder="View" value="${escapeHtml(behavior.view_button_label || '')}" class="form-input">
+            </div>
             <h5 class="config-subsection-title">Order Tracking</h5>
             <div class="form-group form-checkbox">
                 <input type="checkbox" id="config-order-lookup" ${behavior.order_lookup_enabled ? 'checked' : ''}>
@@ -2831,6 +2835,10 @@ function initVisibilityHandlers() {
 
 async function saveVisibilityConfig() {
     if (!currentDetailSite) return;
+    if (!siteConfigReady()) {
+        alert('Site settings are still loading — please try again in a moment.');
+        return;
+    }
     const btn = document.getElementById('save-visibility');
     const status = document.getElementById('visibility-status');
     const original = btn.textContent;
@@ -2867,6 +2875,7 @@ async function saveVisibilityConfig() {
         });
         if (!res.ok) throw new Error('Save failed');
         currentSiteConfig = await res.json();
+        configLoadedSiteId = currentDetailSite.site_id;
         btn.textContent = 'Saved!';
         if (status) status.textContent = '';
         setTimeout(() => { btn.textContent = original; btn.disabled = false; }, 1500);
@@ -3991,6 +4000,14 @@ function setupAnalyticsPeriodButtons() {
 // ==================== Customization Panel ====================
 
 let currentSiteConfig = null;
+// Which site currentSiteConfig was loaded for — saves are blocked until the
+// config for the site on screen finishes loading, so a stale/default form
+// can never overwrite another site's settings.
+let configLoadedSiteId = null;
+
+function siteConfigReady() {
+    return !!currentDetailSite && configLoadedSiteId === currentDetailSite.site_id;
+}
 
 function setupCustomizeTabs() {
     const tabsContainer = document.querySelector('.customize-tabs');
@@ -4512,20 +4529,20 @@ async function loadSiteConfig(siteId) {
         const response = await fetch(`${API_BASE}/sites/${siteId}/config`, {
             headers: getAuthHeaders()
         });
-        
-        if (!response.ok) {
-            currentSiteConfig = getDefaultConfig();
-        } else {
-            currentSiteConfig = await response.json();
-        }
-        
+
+        if (!response.ok) throw new Error(`config HTTP ${response.status}`);
+
+        currentSiteConfig = await response.json();
+        configLoadedSiteId = siteId;
         populateConfigForm(currentSiteConfig);
         updateWidgetPreview();
     } catch (error) {
         console.error('Failed to load site config:', error);
-        currentSiteConfig = getDefaultConfig();
-        populateConfigForm(currentSiteConfig);
-        updateWidgetPreview();
+        // No defaults here — populating the form with defaults used to blank
+        // every saved setting on the next Save. Leave unsaved; saves stay
+        // blocked until a config for this site loads successfully.
+        currentSiteConfig = null;
+        configLoadedSiteId = null;
     }
 }
 
@@ -4600,6 +4617,7 @@ function getDefaultConfig() {
             shop_platform: 'auto',
             cart_url_template: null,
             cart_button_label: 'Add to cart',
+            view_button_label: 'View',
             order_lookup_enabled: false,
             order_lookup_url: null,
             order_ref_pattern: null
@@ -4771,6 +4789,7 @@ function populateConfigForm(config) {
     setVal('config-shop-platform', behavior.shop_platform || 'auto');
     setVal('config-cart-template', behavior.cart_url_template || '');
     setVal('config-cart-label', behavior.cart_button_label || 'Add to cart');
+    setVal('config-view-label', behavior.view_button_label || 'View');
     const tplGroup = document.getElementById('cart-template-group');
     const platformSel = document.getElementById('config-shop-platform');
     const toggleTpl = () => { if (tplGroup) tplGroup.style.display = platformSel?.value === 'custom' ? '' : 'none'; };
@@ -4869,6 +4888,7 @@ function getConfigFromForm() {
             shop_platform: val('config-shop-platform') || 'auto',
             cart_url_template: val('config-cart-template')?.trim() || null,
             cart_button_label: val('config-cart-label')?.trim() || 'Add to cart',
+            view_button_label: val('config-view-label')?.trim() || 'View',
             order_lookup_enabled: checked('config-order-lookup') || false,
             order_lookup_url: val('config-order-lookup-url')?.trim() || null,
             order_ref_pattern: val('config-order-ref-pattern')?.trim() || null
@@ -4878,7 +4898,11 @@ function getConfigFromForm() {
 
 async function saveConfig() {
     if (!currentDetailSite) return;
-    
+    if (!siteConfigReady()) {
+        alert('Site settings are still loading — please try again in a moment.');
+        return;
+    }
+
     const saveBtn = document.getElementById('save-config');
     const originalText = saveBtn.textContent;
     saveBtn.textContent = 'Saving...';
@@ -4902,6 +4926,7 @@ async function saveConfig() {
         
         if (response.ok) {
             currentSiteConfig = await response.json();
+            configLoadedSiteId = currentDetailSite.site_id;
             saveBtn.textContent = 'Saved!';
             setTimeout(() => {
                 saveBtn.textContent = originalText;
@@ -4931,6 +4956,7 @@ async function resetConfig() {
         
         if (response.ok) {
             currentSiteConfig = await response.json();
+            configLoadedSiteId = currentDetailSite.site_id;
             populateConfigForm(currentSiteConfig);
         } else {
             throw new Error('Failed to reset');
@@ -6720,6 +6746,10 @@ async function loadHelpCenterStatus() {
 
 async function saveHelpCenterConfig() {
     if (!currentDetailSite) return;
+    if (!siteConfigReady()) {
+        alert('Site settings are still loading — please try again in a moment.');
+        return;
+    }
     const btn = document.getElementById('save-help-center');
     const original = btn.innerHTML;
     btn.textContent = 'Saving...';
@@ -6755,6 +6785,7 @@ async function saveHelpCenterConfig() {
         });
         if (!response.ok) throw new Error('Failed to save');
         currentSiteConfig = await response.json();
+        configLoadedSiteId = currentDetailSite.site_id;
         btn.textContent = 'Saved!';
         setTimeout(() => { btn.innerHTML = original; btn.disabled = false; }, 1500);
     } catch (e) {
@@ -8950,6 +8981,7 @@ async function loadSecurityConfig() {
 
         const config = await response.json();
         currentSiteConfig = config;
+        configLoadedSiteId = currentDetailSite.site_id;
         const security = config.security || {};
         
         const enforceEl = document.getElementById('security-enforce-domain');
@@ -9084,7 +9116,11 @@ async function copySecureEmbedCode() {
 
 async function saveSecurityConfig() {
     if (!currentDetailSite) return;
-    
+    if (!siteConfigReady()) {
+        alert('Site settings are still loading — please try again in a moment.');
+        return;
+    }
+
     const btn = document.getElementById('save-security-config');
     const originalText = btn.textContent;
     btn.textContent = 'Saving...';
@@ -9112,6 +9148,7 @@ async function saveSecurityConfig() {
         if (!response.ok) throw new Error('Failed to save config');
 
         currentSiteConfig = await response.json();
+        configLoadedSiteId = currentDetailSite.site_id;
         btn.textContent = 'Saved!';
         setTimeout(() => {
             btn.textContent = originalText;
@@ -10534,7 +10571,11 @@ function updateLeadsPagination() {
 
 async function saveLeadConfig() {
     if (!currentDetailSite) return;
-    
+    if (!siteConfigReady()) {
+        alert('Site settings are still loading — please try again in a moment.');
+        return;
+    }
+
     const btn = document.getElementById('save-lead-config');
     const originalText = btn.textContent;
     btn.textContent = 'Saving...';
@@ -10562,6 +10603,7 @@ async function saveLeadConfig() {
         if (!response.ok) throw new Error('Failed to save lead config');
         
         currentSiteConfig = { ...currentSiteConfig, ...config };
+        configLoadedSiteId = currentDetailSite.site_id;
         
         btn.textContent = 'Saved!';
         setTimeout(() => {
