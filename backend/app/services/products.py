@@ -391,7 +391,9 @@ def parse_cart_actions(answer: str) -> tuple:
     clean = re.sub(r"\[\[\s*cart\s*:[^\]]*\]?", " ", clean)
     # [prod:name] card hints are resolved server-side and never shown.
     clean = PRODUCT_TAG_RE.sub(" ", clean)
-    clean = re.sub(r"[ \t]+(\n|$)", r"\1", clean).strip()
+    clean = re.sub(r"[ \t]+(\n|$)", r"\1", clean)
+    # Removing whole-line tags leaves stacked blank lines behind.
+    clean = re.sub(r"\n{3,}", "\n\n", clean).strip()
     return clean, specs
 
 
