@@ -133,7 +133,8 @@ class RAGEngine:
         session_id: str,
         user_id: str = None,
         site_id: str = None,
-        stream: bool = False
+        stream: bool = False,
+        context_token: str = None
     ) -> ChatResponse:
         """
         Process a chat message and generate a response.
@@ -173,6 +174,8 @@ class RAGEngine:
                     catalog_addendum = await self._catalog_addendum(mongodb, site.get("url"), site_behavior)
                 from app.services.orders import order_context_addendum
                 catalog_addendum += await order_context_addendum(message, site_behavior)
+                from app.services.user_context import user_context_addendum
+                catalog_addendum += await user_context_addendum(context_token, site_behavior)
                 logger.info(f"Filtering by site: {site_url_filter}")
         
         try:
@@ -319,6 +322,7 @@ class RAGEngine:
         session_id: str,
         user_id: str = None,
         site_id: str = None,
+        context_token: str = None,
     ) -> AsyncGenerator[str, None]:
         """Stream a chat response (history + retrieval run in parallel)."""
         mongodb = await get_mongodb()
@@ -343,6 +347,8 @@ class RAGEngine:
                     catalog_addendum = await self._catalog_addendum(mongodb, site.get("url"), site_behavior)
                 from app.services.orders import order_context_addendum
                 catalog_addendum += await order_context_addendum(message, site_behavior)
+                from app.services.user_context import user_context_addendum
+                catalog_addendum += await user_context_addendum(context_token, site_behavior)
 
         try:
             rewritten_query = message

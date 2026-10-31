@@ -78,8 +78,13 @@ async def _products_for_answer(mongodb, site_id: str, answer: str, hints: list =
     matched = enrich_matches((hinted + matched)[:4], products)
     cart_label = behavior.get("cart_button_label") or "Add to cart"
     view_label = behavior.get("view_button_label") or "View"
+    link_target = behavior.get("product_link_target")
     for p in matched:
         p["view_label"] = view_label
+        if link_target:
+            p["link_target"] = link_target
+        if behavior.get("cart_button_navigates"):
+            p["cart_navigates"] = True
         cart = build_cart_url(behavior, p, site.get("url") or "")
         if cart:
             p["cart_url"] = cart
@@ -115,7 +120,8 @@ async def chat(request: Request, body: ChatRequest):
             message=body.message,
             session_id=body.session_id,
             user_id=body.user_id,
-            site_id=body.site_id
+            site_id=body.site_id,
+            context_token=body.context_token
         )
         
         suggest_handoff, handoff_reason = await check_handoff_suggestion(
@@ -167,6 +173,7 @@ async def chat_stream(request: Request, body: ChatRequest):
                     session_id=body.session_id,
                     user_id=body.user_id,
                     site_id=body.site_id,
+                    context_token=body.context_token,
                 ):
                     yield f"data: {chunk}\n\n"
                 yield "data: [DONE]\n\n"

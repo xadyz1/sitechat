@@ -47,6 +47,13 @@ services:
     image: mongo:7
     container_name: swiftchat-mongo
     restart: unless-stopped
+    # WiredTiger cache defaults to ~50% of host RAM and gets OOM-killed on
+    # small VPS — cap it and the container's memory so it restarts cleanly.
+    command: ["mongod", "--wiredTigerCacheSizeGB", "0.5"]
+    deploy:
+      resources:
+        limits:
+          memory: 1G
     volumes:
       - mongo-data:/data/db
     healthcheck:

@@ -16,6 +16,7 @@ class ChatRequest(BaseModel):
     user_id: Optional[str] = Field(None, description="User ID for long-term memory")
     site_id: Optional[str] = Field(None, description="Site ID to filter responses")
     stream: bool = Field(False, description="Whether to stream the response")
+    context_token: Optional[str] = Field(None, description="Signed token resolving to live account context (site behavior.user_context_url)")
 
 
 class SourceDocument(BaseModel):
@@ -290,6 +291,22 @@ class SiteBehaviorConfig(BaseModel):
     order_ref_pattern: Optional[str] = Field(
         default=None,
         description="Regex to extract order references from messages (default matches e.g. SP-75115C)"
+    )
+    user_context_enabled: bool = Field(
+        default=False,
+        description="Fetch live user/account context when the widget sends a context_token"
+    )
+    user_context_url: Optional[str] = Field(
+        default=None,
+        description="User-context endpoint URL template with {token} placeholder, e.g. https://app.example/api/chat/context?token={token} — must return JSON {context: string} or {text/summary}"
+    )
+    product_link_target: Optional[Literal["_blank", "_self"]] = Field(
+        default=None,
+        description="Where product-card links open: _blank (default) or _self (same tab, for deep links like plan modals)"
+    )
+    cart_button_navigates: bool = Field(
+        default=False,
+        description="Cart button navigates to cart_url instead of silently adding (for deep-link/subscription flows)"
     )
 
 

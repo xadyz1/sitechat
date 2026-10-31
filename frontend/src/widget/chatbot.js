@@ -62,6 +62,9 @@
   const config = {
     siteId: scriptEl?.dataset?.siteId || embedFallback?.siteId || "default",
     apiUrl: datasetApi || embedApi || defaultEmbedApiUrl(),
+    // Signed token minted by the hosting app for logged-in users — sent as
+    // context_token so the backend can resolve live account context.
+    userToken: scriptEl?.dataset?.userToken || null,
     position: scriptEl?.dataset?.position || "bottom-right",
     primaryColor: scriptEl?.dataset?.primaryColor || "#7B3DFB",
     title: scriptEl?.dataset?.title || "Ask AI",
@@ -2338,7 +2341,11 @@
           body: JSON["stringify"]({
             message: H,
             session_id: sessionId,
-            site_id: config.siteId
+            site_id: config.siteId,
+            context_token:
+              (window["__sitechatEmbed"] && window["__sitechatEmbed"]["userToken"]) ||
+              config.userToken ||
+              undefined
           })
         });
         if (!L.ok) throw new Error("chat HTTP " + L.status);
@@ -2499,11 +2506,12 @@
       // exposes a native addToCart(vid) global — the variant id is resolved
       // from the product page at click time, so no product_id is needed.
       const hasCart = !!J["cart_url"] || typeof window["addToCart"] === "function";
+      const linkTarget = J["link_target"] === "_self" ? "_self" : "_blank";
       const K = document["createElement"](hasCart ? "div" : "a");
       K["className"] = "sitechat-product-card";
       const inner = hasCart ? document["createElement"]("a") : K;
       if (hasCart) inner["className"] = "sitechat-product-link";
-      inner["href"] = J["url"], inner["target"] = "_blank", inner["rel"] = "noopener noreferrer";
+      inner["href"] = J["url"], inner["target"] = linkTarget, inner["rel"] = "noopener noreferrer";
       inner["innerHTML"] =
         '<div class="sitechat-product-img">' + (J["image"] ? '<img src="' + escapeHtml(J["image"]) + '" alt="" loading="lazy">' : "") + "</div>" +
         '<div class="sitechat-product-body">' +
@@ -2518,11 +2526,16 @@
         const cartBtn = document["createElement"]("button");
         cartBtn["type"] = "button", cartBtn["className"] = "sitechat-product-btn primary";
         cartBtn["textContent"] = J["cart_label"] || "Add to cart";
-        cartBtn["addEventListener"]("click", () => addToCartFromCard(J, cartBtn));
+        // Sites that sell via deep links (e.g. subscription plans) navigate to
+        // the cart_url instead of doing a silent add-to-cart.
+        if (J["cart_navigates"] && J["cart_url"])
+          cartBtn["addEventListener"]("click", () => window["open"](J["cart_url"], linkTarget, "noopener,noreferrer"));
+        else
+          cartBtn["addEventListener"]("click", () => addToCartFromCard(J, cartBtn));
         const viewBtn = document["createElement"]("button");
         viewBtn["type"] = "button", viewBtn["className"] = "sitechat-product-btn";
         viewBtn["textContent"] = J["view_label"] || "View";
-        viewBtn["addEventListener"]("click", () => window["open"](J["url"], "_blank", "noopener,noreferrer"));
+        viewBtn["addEventListener"]("click", () => window["open"](J["url"], linkTarget, "noopener,noreferrer"));
         actions["appendChild"](cartBtn), actions["appendChild"](viewBtn);
         K["appendChild"](actions);
       }
@@ -2680,7 +2693,8 @@
         }, 2400);
       } else {
         btn["disabled"] = false, btn["textContent"] = orig;
-        (J2["cart_url"] || J2["url"]) && window["open"](J2["cart_url"] || J2["url"], "_blank", "noopener,noreferrer");
+        const tgt = J2["link_target"] === "_self" ? "_self" : "_blank";
+        (J2["cart_url"] || J2["url"]) && window["open"](J2["cart_url"] || J2["url"], tgt, "noopener,noreferrer");
       }
     };
     // Variable products (several variants on the PDP) get a picker modal —
